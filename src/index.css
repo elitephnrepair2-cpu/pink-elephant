@@ -55,6 +55,12 @@
   .no-print {
     display: none !important;
   }
+  .page-break-before { 
+    page-break-before: always; 
+    break-before: page; 
+  }
+  img { 
+    max-width: 100% !important; 
+    height: auto !important; 
+  }
 }
-@media print { .page-break-before { page-break-before: always; break-before: page; } }
-@media print { img { max-width: 100% !important; height: auto !important; } }

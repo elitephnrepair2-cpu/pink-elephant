@@ -1914,8 +1914,8 @@ const PrintableDocument = ({ client }: { client: any }) => {
   const isMinor = client.type === 'minor-piercing';
 
   return (
-    <div id="print-area" className="hidden print:block fixed inset-0 bg-white z-[500] p-12 overflow-y-auto text-black font-serif">
-      <div className="max-w-4xl mx-auto border-2 border-black p-8">
+    <div id="print-area" className="hidden print:block absolute top-0 left-0 w-full bg-white z-[500] p-4 sm:p-8 text-black font-serif text-[11px] leading-snug min-h-[100vh]">
+      <div className="max-w-4xl mx-auto border-2 border-black p-6">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-4 mb-2">
