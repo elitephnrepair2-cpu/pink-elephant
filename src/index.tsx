@@ -2039,17 +2039,17 @@ const PrintableDocument = ({ client }: { client: any }) => {
       </div>
 
       {/* ID Photos on separate page for print */}
-      <div className="mt-8 break-before-page border-2 border-black p-6" style={{ pageBreakBefore: 'always' }}>
+      <div className="mt-8 break-before-page border-2 border-black p-6 page-break-before print-id-section" style={{ pageBreakBefore: 'always', breakInside: 'avoid' }}>
         <h3 className="text-lg font-bold mb-6 uppercase border-b-2 border-black pb-2 text-center">Identification Verification</h3>
         <div className="grid grid-cols-1 gap-6">
-          <div className="text-center">
+          <div className="text-center" style={{ breakInside: 'avoid' }}>
             <p className="text-[10px] font-bold uppercase mb-1">Primary ID (Client/Guardian)</p>
-            <img src={client.idPhoto || client.guardianIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px]" />
+            <img src={client.idPhoto || client.guardianIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px] print:max-h-[300px]" style={{ pageBreakInside: 'avoid' }} />
           </div>
           {client.minorIdPhoto && (
-            <div className="text-center">
+            <div className="text-center" style={{ breakInside: 'avoid' }}>
               <p className="text-[10px] font-bold uppercase mb-1">Minor ID</p>
-              <img src={client.minorIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px]" />
+              <img src={client.minorIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px] print:max-h-[300px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
         </div>
