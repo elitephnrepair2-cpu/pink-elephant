@@ -1917,23 +1917,23 @@ const PrintableDocument = ({ client }: { client: any }) => {
     <div id="print-area" className="hidden print:block absolute top-0 left-0 w-full bg-white z-[500] p-4 sm:p-8 text-black font-serif text-[11px] leading-snug min-h-[100vh]">
       <div className="max-w-4xl mx-auto border-2 border-black p-6">
         {/* Header */}
-        <div className="text-center mb-4">
-          <div className="flex items-center justify-center gap-3 mb-1">
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white p-2">
-              <ClipboardCheck size={24} />
+        <div className="text-center mb-2">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white p-2">
+              <ClipboardCheck size={20} />
             </div>
             <div className="text-left">
-              <h1 className="text-3xl font-black tracking-tighter leading-none">THE Pink Elephant</h1>
-              <p className="text-[9px] font-bold tracking-[0.4em] uppercase border-t border-b border-black py-0.5 mt-1">Piercing & Tattoo Parlor</p>
+              <h1 className="text-2xl font-black tracking-tighter leading-none">THE Pink Elephant</h1>
+              <p className="text-[8px] font-bold tracking-[0.4em] uppercase border-t border-b border-black py-0.5 mt-0.5">Piercing & Tattoo Parlor</p>
             </div>
           </div>
-          <h2 className="text-lg font-bold mt-2 uppercase underline mb-0">
+          <h2 className="text-base font-bold mt-1 uppercase underline mb-0">
             {client.type.replace('-', ' ')} consent and release form
           </h2>
         </div>
 
         {/* Legal Text */}
-        <div className="text-[10px] mb-3 space-y-2 leading-tight">
+        <div className="text-[9px] mb-2 space-y-1 leading-tight">
           <p className="font-bold">PLEASE READ:</p>
           {client.type === 'tattoo' ? (
             <>
@@ -1967,13 +1967,13 @@ const PrintableDocument = ({ client }: { client: any }) => {
             </>
           )}
 
-          <p className="text-center font-bold border-t border-b border-black py-2 my-4">
+          <p className="text-center font-bold border-t border-b border-black py-1 my-2">
             NO PERSON MAY BE {client.type === 'tattoo' ? 'TATTOOED' : 'PIERCED'} WHO APPEARS TO BE UNDER THE INFLUENCE OF ALCOHOL OR DRUGS
           </p>
         </div>
 
         {/* Client Info */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-2">
           <div className="border-b border-black pb-0.5"><strong>Name:</strong> {client.name || client.minorName}</div>
           <div className="border-b border-black pb-0.5"><strong>Date:</strong> {client.submissionDate}</div>
           <div className="border-b border-black pb-0.5"><strong>Address:</strong> {client.address}</div>
@@ -1992,19 +1992,19 @@ const PrintableDocument = ({ client }: { client: any }) => {
         </div>
 
         {/* Acknowledgement */}
-        <div className="font-bold mb-2 uppercase text-[9px] text-center">
+        <div className="font-bold mb-1 uppercase text-[8px] text-center">
           I have received a copy of applicable written care instructions and I have read and understand such written care instructions.
         </div>
 
         {/* Signatures */}
-        <div className="grid grid-cols-2 gap-8 mb-4">
+        <div className="grid grid-cols-2 gap-6 mb-2">
           <div className="border-t border-black pt-1">
-            <img src={client.signature || client.adultSignature} className="max-h-12 mix-blend-multiply mb-0.5 object-contain" />
-            <p className="text-[9px] uppercase font-bold">Signature (Client/Guardian)</p>
+            <img src={client.signature || client.adultSignature} className="max-h-10 mix-blend-multiply mb-0.5 object-contain" />
+            <p className="text-[8px] uppercase font-bold">Signature (Client/Guardian)</p>
           </div>
           {isMinor && (
             <div className="border-t border-black pt-1">
-              <img src={client.minorSignature} className="max-h-12 mix-blend-multiply mb-0.5 object-contain" />
+              <img src={client.minorSignature} className="max-h-10 mix-blend-multiply mb-0.5 object-contain" />
               <p className="text-[10px] uppercase font-bold">Minor Signature</p>
             </div>
           )}
@@ -2039,17 +2039,17 @@ const PrintableDocument = ({ client }: { client: any }) => {
       </div>
 
       {/* ID Photos on front page for print */}
-      <div className="mt-2 border-t-2 border-black pt-2 print-id-section" style={{ breakInside: 'avoid' }}>
-        <h3 className="text-xs font-bold mb-2 uppercase text-center">Identification Verification</h3>
+      <div className="mt-1 border-t-2 border-black pt-1 print-id-section" style={{ breakInside: 'avoid' }}>
+        <h3 className="text-[10px] font-bold mb-1 uppercase text-center">Identification Verification</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center" style={{ breakInside: 'avoid' }}>
-            <p className="text-[8px] font-bold uppercase mb-1">Primary ID</p>
-            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[150px] print:max-h-[140px]" style={{ pageBreakInside: 'avoid' }} />
+            <p className="text-[8px] font-bold uppercase mb-0.5">Primary ID</p>
+            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
           </div>
           {client.minorIdPhoto && (
             <div className="text-center" style={{ breakInside: 'avoid' }}>
-              <p className="text-[8px] font-bold uppercase mb-1">Minor ID</p>
-              <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[150px] print:max-h-[140px]" style={{ pageBreakInside: 'avoid' }} />
+              <p className="text-[8px] font-bold uppercase mb-0.5">Minor ID</p>
+              <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
         </div>
