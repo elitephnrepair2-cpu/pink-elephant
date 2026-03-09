@@ -1,0 +1,7 @@
+{
+  "description": "Professional digital consent forms for The Pink Elephant Piercing & Tattoo Parlor.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "name": "The Pink Elephant Consent"
+}
