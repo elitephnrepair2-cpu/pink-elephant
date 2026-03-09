@@ -2039,7 +2039,7 @@ const PrintableDocument = ({ client }: { client: any }) => {
       </div>
 
       {/* ID Photos on separate page for print */}
-      <div className="mt-8 break-before-page border-2 border-black p-6 page-break-before">
+      <div className="mt-8 break-before-page border-2 border-black p-6" style={{ pageBreakBefore: 'always' }}>
         <h3 className="text-lg font-bold mb-6 uppercase border-b-2 border-black pb-2 text-center">Identification Verification</h3>
         <div className="grid grid-cols-1 gap-6">
           <div className="text-center">
