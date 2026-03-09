@@ -1917,23 +1917,23 @@ const PrintableDocument = ({ client }: { client: any }) => {
     <div id="print-area" className="hidden print:block absolute top-0 left-0 w-full bg-white z-[500] p-4 sm:p-8 text-black font-serif text-[11px] leading-snug min-h-[100vh]">
       <div className="max-w-4xl mx-auto border-2 border-black p-6">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-4 mb-2">
-            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white">
-              <ClipboardCheck size={32} />
+        <div className="text-center mb-4">
+          <div className="flex items-center justify-center gap-3 mb-1">
+            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white p-2">
+              <ClipboardCheck size={24} />
             </div>
             <div className="text-left">
-              <h1 className="text-4xl font-black tracking-tighter leading-none">THE Pink Elephant</h1>
-              <p className="text-[10px] font-bold tracking-[0.4em] uppercase border-t border-b border-black py-1 mt-1">Piercing & Tattoo Parlor</p>
+              <h1 className="text-3xl font-black tracking-tighter leading-none">THE Pink Elephant</h1>
+              <p className="text-[9px] font-bold tracking-[0.4em] uppercase border-t border-b border-black py-0.5 mt-1">Piercing & Tattoo Parlor</p>
             </div>
           </div>
-          <h2 className="text-xl font-bold mt-4 uppercase underline">
+          <h2 className="text-lg font-bold mt-2 uppercase underline mb-0">
             {client.type.replace('-', ' ')} consent and release form
           </h2>
         </div>
 
         {/* Legal Text */}
-        <div className="text-sm mb-6 space-y-4 leading-tight">
+        <div className="text-[10px] mb-3 space-y-2 leading-tight">
           <p className="font-bold">PLEASE READ:</p>
           {client.type === 'tattoo' ? (
             <>
@@ -1992,28 +1992,28 @@ const PrintableDocument = ({ client }: { client: any }) => {
         </div>
 
         {/* Acknowledgement */}
-        <div className="font-bold mb-4 uppercase text-[10px] text-center">
+        <div className="font-bold mb-2 uppercase text-[9px] text-center">
           I have received a copy of applicable written care instructions and I have read and understand such written care instructions.
         </div>
 
         {/* Signatures */}
-        <div className="grid grid-cols-2 gap-12 mb-8">
-          <div className="border-t border-black pt-2">
-            <img src={client.signature || client.adultSignature} className="max-h-16 mix-blend-multiply mb-1" />
-            <p className="text-[10px] uppercase font-bold">Signature (Client/Guardian)</p>
+        <div className="grid grid-cols-2 gap-8 mb-4">
+          <div className="border-t border-black pt-1">
+            <img src={client.signature || client.adultSignature} className="max-h-12 mix-blend-multiply mb-0.5 object-contain" />
+            <p className="text-[9px] uppercase font-bold">Signature (Client/Guardian)</p>
           </div>
           {isMinor && (
-            <div className="border-t border-black pt-2">
-              <img src={client.minorSignature} className="max-h-16 mix-blend-multiply mb-1" />
+            <div className="border-t border-black pt-1">
+              <img src={client.minorSignature} className="max-h-12 mix-blend-multiply mb-0.5 object-contain" />
               <p className="text-[10px] uppercase font-bold">Minor Signature</p>
             </div>
           )}
         </div>
 
         {/* Artist Box */}
-        <div className="border-2 border-black p-4 mb-8">
-          <h3 className="text-sm font-black uppercase mb-4 text-center">To be completed by the studio artist:</h3>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-[10px]">
+        <div className="border-2 border-black p-2 mb-2">
+          <h3 className="text-xs font-black uppercase mb-1 text-center">To be completed by the studio artist:</h3>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[9px]">
             <div className="border-b border-slate-300"><strong>Artist Name:</strong> {client.artistName || '________________'}</div>
             <div className="border-b border-slate-300"><strong>{client.type === 'tattoo' ? 'Tattoo' : 'Piercing'} price:</strong> {client.price || '________________'}</div>
             <div className="border-b border-slate-300"><strong>Client\'s Age:</strong> {client.clientAge || '________________'}</div>
@@ -2038,18 +2038,18 @@ const PrintableDocument = ({ client }: { client: any }) => {
         </div>
       </div>
 
-      {/* ID Photos on separate page for print */}
-      <div className="mt-8 break-before-page border-2 border-black p-6 page-break-before print-id-section" style={{ pageBreakBefore: 'always', breakInside: 'avoid' }}>
-        <h3 className="text-lg font-bold mb-6 uppercase border-b-2 border-black pb-2 text-center">Identification Verification</h3>
-        <div className="grid grid-cols-1 gap-6">
+      {/* ID Photos on front page for print */}
+      <div className="mt-2 border-t-2 border-black pt-2 print-id-section" style={{ breakInside: 'avoid' }}>
+        <h3 className="text-xs font-bold mb-2 uppercase text-center">Identification Verification</h3>
+        <div className="grid grid-cols-2 gap-4">
           <div className="text-center" style={{ breakInside: 'avoid' }}>
-            <p className="text-[10px] font-bold uppercase mb-1">Primary ID (Client/Guardian)</p>
-            <img src={client.idPhoto || client.guardianIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px] print:max-h-[300px]" style={{ pageBreakInside: 'avoid' }} />
+            <p className="text-[8px] font-bold uppercase mb-1">Primary ID</p>
+            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[150px] print:max-h-[140px]" style={{ pageBreakInside: 'avoid' }} />
           </div>
           {client.minorIdPhoto && (
             <div className="text-center" style={{ breakInside: 'avoid' }}>
-              <p className="text-[10px] font-bold uppercase mb-1">Minor ID</p>
-              <img src={client.minorIdPhoto} className="max-w-sm mx-auto border-2 border-black shadow-md object-contain max-h-[400px] print:max-h-[300px]" style={{ pageBreakInside: 'avoid' }} />
+              <p className="text-[8px] font-bold uppercase mb-1">Minor ID</p>
+              <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[150px] print:max-h-[140px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
         </div>
