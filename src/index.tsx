@@ -106,10 +106,53 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      console.error("Camera error:", err);
-      alert("Could not access camera.");
+      console.warn("Live camera access failed, falling back to file picker:", err);
       setIsCameraOpen(false);
+      // Fallback to native file input
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.capture = 'environment';
+      fileInput.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              compressImage(event.target.result as string, 800, 0.7).then(compressed => {
+                onCapture(compressed);
+              });
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      fileInput.click();
     }
+  };
+
+  const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      let img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        let canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        let ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(base64Str); // fallback if error
+    });
   };
 
   const capture = () => {
@@ -119,8 +162,11 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
       canvasRef.current.height = videoRef.current.videoHeight;
       context?.drawImage(videoRef.current, 0, 0);
       const data = canvasRef.current.toDataURL('image/jpeg');
-      onCapture(data);
-      stopCamera();
+
+      compressImage(data, 800, 0.7).then(compressed => {
+        onCapture(compressed);
+        stopCamera();
+      });
     }
   };
 
@@ -202,7 +248,8 @@ const App = () => {
     const savedMode = localStorage.getItem('pe_app_mode');
     return (savedMode as 'kiosk' | 'staff') || 'kiosk';
   });
-  const [view, setView] = useState<'hub' | 'menu' | 'form' | 'success' | 'staff-queue' | 'staff-settings' | 'public-queue' | 'staff-history' | 'staff-artists' | 'staff-hub'>(() => {
+  const [view, setView] = useState<'hub' | 'menu' | 'form' | 'success' | 'staff-queue' | 'staff-settings' | 'public-queue' | 'staff-history' | 'staff-artists' | 'staff-hub' | 'staff-artist-info-sheet'>(() => {
+    const params = new URLSearchParams(window.location.search);
     const savedView = localStorage.getItem('pe_app_view');
     return (savedView as any) || 'hub';
   });
@@ -218,6 +265,10 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewingForm, setViewingForm] = useState<any>(null);
   const [selectedClient, setSelectedClient] = useState<{ name: string, phone: string } | null>(null);
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [formToArchive, setFormToArchive] = useState<any>(null);
+  const [selectedArchiveArtist, setSelectedArchiveArtist] = useState<string>('');
+  const [infoSheetData, setInfoSheetData] = useState<Partial<any>>({});
 
   // Supabase Client
   const supabase = useMemo(() => {
@@ -282,10 +333,12 @@ const App = () => {
     }
   };
 
-  const handleArchive = async (updatedForm: any) => {
+  const handleArchive = async (updatedForm: any, artistName: string = '') => {
     const finalForm = {
       ...updatedForm,
-      isArchived: true
+      isArchived: true,
+      artistName: artistName || updatedForm.artistName || '',
+      ...infoSheetData
     };
     const { error } = await supabase
       .from('consent_forms')
@@ -293,7 +346,15 @@ const App = () => {
       .eq('id', updatedForm.db_id || updatedForm.id);
 
     if (!error) {
+      setFormToArchive(null);
+      setInfoSheetData({});
+      if (view === 'staff-artist-info-sheet') {
+        setView('staff-queue');
+      }
       fetchForms();
+    } else {
+      console.error("Archive error:", error);
+      alert("Failed to archive form: " + error.message);
     }
   };
 
@@ -314,6 +375,42 @@ const App = () => {
       console.error("Delete error:", error);
       alert("Failed to delete form: " + error.message);
     } else {
+      setViewingForm(null);
+      fetchForms();
+    }
+  };
+
+  // Clear selections when view changes
+  useEffect(() => {
+    setSelectedFormIds(new Set());
+  }, [view, staffQueueFilter, selectedClient]);
+
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedFormIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedFormIds(newSelected);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedFormIds.size === 0) return;
+    if (!confirm(`Are you sure you want to permanently delete ${selectedFormIds.size} form(s)?`)) return;
+
+    const idsToDelete = Array.from(selectedFormIds);
+    const { error } = await supabase
+      .from('consent_forms')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (error) {
+      console.error("Delete error:", error);
+      alert("Failed to delete forms: " + error.message);
+    } else {
+      setSelectedFormIds(new Set());
       setViewingForm(null);
       fetchForms();
     }
@@ -1372,6 +1469,15 @@ const App = () => {
                         })}
                       </div>
                       <div className="flex gap-2">
+                        {selectedFormIds.size > 0 && (
+                          <button
+                            onClick={handleDeleteSelected}
+                            className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
+                          >
+                            <Trash2 size={16} className="mb-1" />
+                            Delete ({selectedFormIds.size})
+                          </button>
+                        )}
                         <button
                           onClick={() => setIsQRModalOpen(true)}
                           className="flex flex-col items-center justify-center w-12 h-12 border border-black bg-white hover:bg-slate-50 transition-all"
@@ -1420,13 +1526,22 @@ const App = () => {
                           onClick={() => setViewingForm(form)}
                         >
                           <div className="flex justify-between items-start mb-4">
-                            <div className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                              form.type === 'tattoo' ? "bg-pink-100 text-pink-600" :
-                                form.type === 'piercing' ? "bg-purple-100 text-purple-600" :
-                                  "bg-amber-100 text-amber-600"
-                            )}>
-                              {form.type}
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                checked={selectedFormIds.has(form.id)}
+                                onClick={(e) => toggleSelection(form.id, e)}
+                                onChange={() => { }}
+                              />
+                              <div className={cn(
+                                "px-3 py-1 rounded-full",
+                                form.type === 'tattoo' ? "bg-pink-100 text-pink-600" :
+                                  form.type === 'piercing' ? "bg-purple-100 text-purple-600" :
+                                    "bg-amber-100 text-amber-600"
+                              )}>
+                                {form.type}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-slate-400">{form.submissionTime}</span>
@@ -1451,9 +1566,8 @@ const App = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm("Archive this form?")) {
-                                  handleArchive(form);
-                                }
+                                setFormToArchive(form);
+                                setSelectedArchiveArtist(form.artistName || '');
                               }}
                               className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors"
                             >
@@ -1499,22 +1613,34 @@ const App = () => {
                     )}
                   </header>
 
-                  {!selectedClient && (
-                    <div className="mb-8 relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input
-                        placeholder="Search history by name..."
-                        className="w-full pl-10 pr-4 py-2 bg-white border border-black text-sm outline-none focus:bg-slate-50 transition-all"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  )}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                    {!selectedClient && (
+                      <div className="relative flex-1 w-full max-w-sm">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                          placeholder="Search history by name..."
+                          className="w-full pl-10 pr-4 py-2 bg-white border border-black text-sm outline-none focus:bg-slate-50 transition-all"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {selectedFormIds.size > 0 && (
+                      <button
+                        onClick={handleDeleteSelected}
+                        className="flex items-center gap-2 px-6 py-2 bg-red-50 text-red-600 border border-red-500 font-bold hover:bg-red-100 transition-all text-xs uppercase tracking-widest ml-auto"
+                      >
+                        <Trash2 size={16} />
+                        Delete Selected ({selectedFormIds.size})
+                      </button>
+                    )}
+                  </div>
 
                   <div className="bg-white border border-black overflow-x-auto">
                     <table className="w-full text-left min-w-[600px] border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-black">
+                          <th className="w-12 px-4 py-3 border-r border-black"></th>
                           <th className="px-4 py-3 text-[10px] font-black uppercase tracking-tight text-slate-900 border-r border-black">Client</th>
                           <th className="px-4 py-3 text-[10px] font-black uppercase tracking-tight text-slate-900 border-r border-black">Type</th>
                           <th className="px-4 py-3 text-[10px] font-black uppercase tracking-tight text-slate-900 border-r border-black">Date</th>
@@ -1529,7 +1655,10 @@ const App = () => {
                         ).map((form) => (
                           <tr
                             key={form.id}
-                            className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                            className={cn(
+                              "transition-colors group cursor-pointer",
+                              selectedFormIds.has(form.id) ? "bg-primary/5" : "hover:bg-slate-50"
+                            )}
                             onClick={() => {
                               if (!selectedClient) {
                                 setSelectedClient({ name: form.name || form.minorName, phone: form.phone });
@@ -1538,6 +1667,15 @@ const App = () => {
                               }
                             }}
                           >
+                            <td className="px-4 py-3 border-r border-black text-center" onClick={(e) => toggleSelection(form.id, e)}>
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                checked={selectedFormIds.has(form.id)}
+                                onChange={() => { }}
+                                onClick={(e) => toggleSelection(form.id, e)} // Prevent row click
+                              />
+                            </td>
                             <td className="px-4 py-3 border-r border-black">
                               <div className="font-bold text-slate-900 text-sm">{form.name || form.minorName}</div>
                               <div className="text-[10px] text-slate-400">{form.phone}</div>
@@ -1665,9 +1803,208 @@ const App = () => {
                   </div>
                 </div>
               )}
-            </main>
+              {view === 'staff-artist-info-sheet' && formToArchive && (
+                <div className="max-w-4xl mx-auto pb-20">
+                  <header className="mb-8 flex justify-between items-end">
+                    <div>
+                      <h1 className="text-4xl font-black text-slate-900 tracking-tight">Artist Info Sheet</h1>
+                      <p className="text-slate-500 font-medium">
+                        Complete details for {formToArchive.name || formToArchive.minorName}'s procedure
+                      </p>
+                    </div>
+                  </header>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* ID Photo Section */}
+                    <div className="bg-slate-100 rounded-3xl p-6 flex flex-col items-center justify-center min-h-[400px]">
+                      {(formToArchive.idPhoto || formToArchive.guardianIdPhoto || formToArchive.minorIdPhoto) ? (
+                        <div className="space-y-4 w-full">
+                          {(formToArchive.idPhoto || formToArchive.guardianIdPhoto) && (
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 text-center">
+                                {formToArchive.type === 'minor-piercing' ? 'Guardian ID' : 'Client ID'}
+                              </p>
+                              <img src={formToArchive.idPhoto || formToArchive.guardianIdPhoto} alt="ID" className="w-full max-h-[300px] object-contain rounded-2xl border-2 border-slate-200 shadow-sm" />
+                            </div>
+                          )}
+                          {formToArchive.minorIdPhoto && (
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 text-center mt-4">Minor ID</p>
+                              <img src={formToArchive.minorIdPhoto} alt="Minor ID" className="w-full max-h-[300px] object-contain rounded-2xl border-2 border-slate-200 shadow-sm" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 font-bold uppercase tracking-widest text-sm text-center">No Photo ID found</p>
+                      )}
+                    </div>
+
+                    {/* Input Fields Section */}
+                    <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Price</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.price || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, price: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Location of Procedure</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.location || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, location: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Client Age</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.clientAge || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, clientAge: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Client DOB</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.clientDOB || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, clientDOB: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">ID Type</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.idType || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, idType: e.target.value })}
+                        />
+                      </div>
+                      {(formToArchive.type === 'tattoo' || formToArchive.type === 'minor-tattoo') ? (
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Colors Used</label>
+                          <input
+                            type="text"
+                            className="w-full form-input py-3"
+                            value={infoSheetData.colorsUsed || ''}
+                            onChange={(e) => setInfoSheetData({ ...infoSheetData, colorsUsed: e.target.value })}
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Jewelry Used</label>
+                          <input
+                            type="text"
+                            className="w-full form-input py-3"
+                            value={infoSheetData.jewelryUsed || ''}
+                            onChange={(e) => setInfoSheetData({ ...infoSheetData, jewelryUsed: e.target.value })}
+                          />
+                        </div>
+                      )}
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Catalogue Number (if applicable)</label>
+                        <input
+                          type="text"
+                          className="w-full form-input py-3"
+                          value={infoSheetData.catalogueNumber || ''}
+                          onChange={(e) => setInfoSheetData({ ...infoSheetData, catalogueNumber: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 pt-6 border-t border-slate-100">
+                      <button
+                        onClick={() => handleArchive(formToArchive, selectedArchiveArtist)}
+                        className="flex-1 btn-primary py-4"
+                      >
+                        SAVE & ARCHIVE
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFormToArchive(null);
+                          setView('staff-queue');
+                        }}
+                        className="px-8 btn-secondary py-4"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
           </div>
         )}
+
+        {/* Archive / Artist Modal */}
+        <AnimatePresence>
+          {formToArchive && view !== 'staff-artist-info-sheet' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setFormToArchive(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                    <User size={32} />
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 mb-1">Select Artist</h2>
+                  <p className="text-slate-500 font-medium text-sm">Who completed {formToArchive.name || formToArchive.minorName}'s procedure?</p>
+                </div>
+
+                <div className="space-y-4">
+                  <select
+                    className="w-full form-input py-4 text-center font-bold text-lg cursor-pointer appearance-none bg-slate-50"
+                    value={selectedArchiveArtist}
+                    onChange={(e) => setSelectedArchiveArtist(e.target.value)}
+                  >
+                    <option value="">-- No Artist / Unknown --</option>
+                    {artists.map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex flex-col gap-3 pt-4">
+                    <button
+                      onClick={() => setView('staff-artist-info-sheet')}
+                      className="w-full btn-primary py-4"
+                    >
+                      FILL OUT INFO SHEET
+                    </button>
+                    <button
+                      onClick={() => handleArchive(formToArchive, selectedArchiveArtist)}
+                      className="w-full bg-slate-100 text-slate-500 hover:bg-slate-200 py-4 font-bold rounded-xl transition-all"
+                    >
+                      SAVE FOR LATER
+                    </button>
+                    <button
+                      onClick={() => setFormToArchive(null)}
+                      className="w-full text-slate-400 font-bold hover:text-slate-600 py-2 transition-all"
+                    >
+                      CANCEL
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Passcode Modal */}
         <AnimatePresence>
