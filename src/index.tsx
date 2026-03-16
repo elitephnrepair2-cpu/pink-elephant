@@ -480,7 +480,7 @@ const App = () => {
     }
 
     // 1. Prepare initial submission data (excluding base64 signatures and IDs)
-    const { signature, adultSignature, minorSignature, idPhoto, guardianIdPhoto, minorIdPhoto, ...restData } = formData;
+    const { signature, adultSignature, minorSignature, idPhoto, guardianIdPhoto, minorIdPhoto, minorBirthCert, ...restData } = formData;
 
     const submission = {
       ...restData,
@@ -550,6 +550,7 @@ const App = () => {
       let idPhotoUrl = null;
       let guardianIdPhotoUrl = null;
       let minorIdPhotoUrl = null;
+      let minorBirthCertUrl = null;
 
       const getUrl = (path: string | null) => {
         if (!path) return null;
@@ -561,11 +562,13 @@ const App = () => {
         const mSigPath = await uploadToStorage(minorSignature, `consent/${formId}/minor_sig_${timestamp}.png`);
         const gIdPath = await uploadToStorage(guardianIdPhoto, `consent/${formId}/guardian_id_${timestamp}.jpg`);
         const mIdPath = await uploadToStorage(minorIdPhoto, `consent/${formId}/minor_id_${timestamp}.jpg`);
+        const mbCertPath = await uploadToStorage(minorBirthCert, `consent/${formId}/minor_birth_cert_${timestamp}.jpg`);
 
         guardianSignatureUrl = getUrl(gSigPath);
         minorSignatureUrl = getUrl(mSigPath);
         guardianIdPhotoUrl = getUrl(gIdPath);
         minorIdPhotoUrl = getUrl(mIdPath);
+        minorBirthCertUrl = getUrl(mbCertPath);
       } else {
         const sigPath = await uploadToStorage(signature, `consent/${formId}/adult_sig_${timestamp}.png`);
         const idPath = await uploadToStorage(idPhoto, `consent/${formId}/adult_id_${timestamp}.jpg`);
@@ -583,7 +586,8 @@ const App = () => {
         minorSignature: minorSignatureUrl,
         idPhoto: idPhotoUrl,
         guardianIdPhoto: guardianIdPhotoUrl,
-        minorIdPhoto: minorIdPhotoUrl
+        minorIdPhoto: minorIdPhotoUrl,
+        minorBirthCert: minorBirthCertUrl
       };
 
       const { error: updateError } = await supabase
@@ -1817,7 +1821,7 @@ const App = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* ID Photo Section */}
                     <div className="bg-slate-100 rounded-3xl p-6 flex flex-col items-center justify-center min-h-[400px]">
-                      {(formToArchive.idPhoto || formToArchive.guardianIdPhoto || formToArchive.minorIdPhoto) ? (
+                      {(formToArchive.idPhoto || formToArchive.guardianIdPhoto || formToArchive.minorIdPhoto || formToArchive.minorBirthCert) ? (
                         <div className="space-y-4 w-full">
                           {(formToArchive.idPhoto || formToArchive.guardianIdPhoto) && (
                             <div>
@@ -1831,6 +1835,12 @@ const App = () => {
                             <div>
                               <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 text-center mt-4">Minor ID</p>
                               <img src={formToArchive.minorIdPhoto} alt="Minor ID" className="w-full max-h-[300px] object-contain rounded-2xl border-2 border-slate-200 shadow-sm" />
+                            </div>
+                          )}
+                          {formToArchive.minorBirthCert && (
+                            <div>
+                              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 text-center mt-4">Minor Birth Certificate</p>
+                              <img src={formToArchive.minorBirthCert} alt="Minor Birth Certificate" className="w-full max-h-[300px] object-contain rounded-2xl border-2 border-slate-200 shadow-sm" />
                             </div>
                           )}
                         </div>
@@ -2178,6 +2188,12 @@ const App = () => {
                               <img src={viewingForm.minorIdPhoto} className="w-full rounded-2xl border border-slate-200 shadow-sm" />
                             </div>
                           )}
+                          {viewingForm.minorBirthCert && (
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase">Minor Birth Certificate</label>
+                              <img src={viewingForm.minorBirthCert} className="w-full rounded-2xl border border-slate-200 shadow-sm" />
+                            </div>
+                          )}
                         </div>
                       </section>
                     </div>
@@ -2389,6 +2405,12 @@ const PrintableDocument = ({ client }: { client: any }) => {
               <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
+          {client.minorBirthCert && (
+            <div className="text-center" style={{ breakInside: 'avoid' }}>
+              <p className="text-[8px] font-bold uppercase mb-0.5">Minor Birth Certificate</p>
+              <img src={client.minorBirthCert} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2412,6 +2434,7 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
     minorName: '',
     relationToMinor: '',
     minorIdPhoto: '',
+    minorBirthCert: '',
     guardianIdPhoto: '',
     adultSignature: '',
     minorSignature: '',
@@ -2548,6 +2571,7 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
           <>
             <ImageCapture label="Guardian Photo ID" onCapture={(img) => setFormData({ ...formData, guardianIdPhoto: img })} imageSrc={formData.guardianIdPhoto} />
             <ImageCapture label="Minor Photo ID" onCapture={(img) => setFormData({ ...formData, minorIdPhoto: img })} imageSrc={formData.minorIdPhoto} />
+            <ImageCapture label="Minor Birth Certificate" onCapture={(img) => setFormData({ ...formData, minorBirthCert: img })} imageSrc={formData.minorBirthCert} />
           </>
         ) : (
           <ImageCapture label="Valid Photo ID" onCapture={(img) => setFormData({ ...formData, idPhoto: img })} imageSrc={formData.idPhoto} />

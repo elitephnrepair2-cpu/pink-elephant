@@ -40,6 +40,7 @@ export interface MinorPiercingFormData extends BaseFormData {
   minorName: string;
   relationToMinor: string;
   minorIdPhoto: string;
+  minorBirthCert: string;
   guardianIdPhoto: string;
   adultSignature: string;
   minorSignature: string;
