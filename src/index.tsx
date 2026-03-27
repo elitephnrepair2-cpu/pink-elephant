@@ -416,6 +416,41 @@ const App = () => {
     }
   };
 
+  const handleDeleteAll = async () => {
+    const visibleForms = forms.filter(f => {
+      if (f.isArchived) return false;
+      const matchesSearch = (f.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false) || 
+                            (f.minorName?.toLowerCase().includes(searchQuery.toLowerCase()) || false);
+      if (searchQuery && !matchesSearch) return false;
+      
+      if (staffQueueFilter === 'all') return true;
+      if (staffQueueFilter === 'tattoo') return f.type === 'tattoo';
+      return f.type === 'piercing' || f.type === 'minor-piercing';
+    });
+    
+    if (visibleForms.length === 0) {
+      alert("There are no forms matching your filter to delete.");
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to permanently delete ALL ${visibleForms.length} visible form(s)? This action cannot be undone.`)) return;
+
+    const idsToDelete = visibleForms.map(f => f.id);
+    const { error } = await supabase
+      .from('consent_forms')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (error) {
+      console.error("Delete error:", error);
+      alert("Failed to delete forms: " + error.message);
+    } else {
+      setSelectedFormIds(new Set());
+      setViewingForm(null);
+      fetchForms();
+    }
+  };
+
   useEffect(() => {
     localStorage.setItem('pe_app_mode', mode);
   }, [mode]);
@@ -1473,6 +1508,13 @@ const App = () => {
                         })}
                       </div>
                       <div className="flex gap-2">
+                        <button
+                          onClick={handleDeleteAll}
+                          className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
+                        >
+                          <Trash2 size={16} className="mb-1" />
+                          Delete All
+                        </button>
                         {selectedFormIds.size > 0 && (
                           <button
                             onClick={handleDeleteSelected}
