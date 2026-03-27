@@ -2397,18 +2397,18 @@ const PrintableDocument = ({ client }: { client: any }) => {
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center" style={{ breakInside: 'avoid' }}>
             <p className="text-[8px] font-bold uppercase mb-0.5">Primary ID</p>
-            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
+            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
           </div>
           {client.minorIdPhoto && (
             <div className="text-center" style={{ breakInside: 'avoid' }}>
               <p className="text-[8px] font-bold uppercase mb-0.5">Minor ID</p>
-              <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
+              <img src={client.minorIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
           {client.minorBirthCert && (
             <div className="text-center" style={{ breakInside: 'avoid' }}>
               <p className="text-[8px] font-bold uppercase mb-0.5">Minor Birth Certificate</p>
-              <img src={client.minorBirthCert} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[220px]" style={{ pageBreakInside: 'avoid' }} />
+              <img src={client.minorBirthCert} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
             </div>
           )}
         </div>
