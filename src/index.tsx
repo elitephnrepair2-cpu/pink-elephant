@@ -96,39 +96,78 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
-  const startCamera = async () => {
-    setIsCameraOpen(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+  const triggerFileFallback = () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.capture = 'environment';
+    fileInput.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            compressImage(event.target.result as string, 800, 0.7).then(compressed => {
+              onCapture(compressed);
+            });
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    } catch (err) {
-      console.warn("Live camera access failed, falling back to file picker:", err);
-      setIsCameraOpen(false);
-      // Fallback to native file input
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = 'image/*';
-      fileInput.capture = 'environment';
-      fileInput.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            if (event.target?.result) {
-              compressImage(event.target.result as string, 800, 0.7).then(compressed => {
-                onCapture(compressed);
-              });
-            }
-          };
-          reader.readAsDataURL(file);
+    };
+    fileInput.click();
+  };
+
+  useEffect(() => {
+    let activeStream: MediaStream | null = null;
+    let isCancelled = false;
+
+    if (isCameraOpen) {
+      const initCamera = async () => {
+        try {
+          let stream: MediaStream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'environment' }
+            });
+          } catch (err) {
+            console.warn("Environment camera failed, trying any video device:", err);
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true
+            });
+          }
+
+          if (isCancelled) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+
+          activeStream = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (err) {
+          console.error("Camera access failed:", err);
+          if (!isCancelled) {
+            setIsCameraOpen(false);
+            triggerFileFallback();
+          }
         }
       };
-      fileInput.click();
+
+      initCamera();
     }
+
+    return () => {
+      isCancelled = true;
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isCameraOpen]);
+
+  const startCamera = () => {
+    setIsCameraOpen(true);
   };
 
   const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -165,14 +204,12 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
 
       compressImage(data, 800, 0.7).then(compressed => {
         onCapture(compressed);
-        stopCamera();
+        setIsCameraOpen(false);
       });
     }
   };
 
   const stopCamera = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
-    stream?.getTracks().forEach(track => track.stop());
     setIsCameraOpen(false);
   };
 
