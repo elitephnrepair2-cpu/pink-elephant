@@ -10,6 +10,11 @@ export interface BaseFormData {
   
   // Client Info
   name: string;
+  dob?: string;
+  scannedDOB?: string;
+  idVerified?: boolean;
+  idPhotoFront?: string;
+  idPhotoBack?: string;
   date: string;
   address: string;
   phone: string;

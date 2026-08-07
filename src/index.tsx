@@ -29,18 +29,119 @@ import {
   Clock,
   Sparkles,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle,
+  AlertCircle,
+  ScanLine
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import SignatureCanvas from 'react-signature-canvas';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-
 import { QRCodeCanvas } from 'qrcode.react';
+import { BrowserPDF417Reader } from '@zxing/library';
 
 // --- Utilities ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export interface ParsedIDData {
+  dob?: string;
+  rawDOB?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
+export function parseAAMVABarcode(text: string): ParsedIDData | null {
+  if (!text) return null;
+
+  // DOB (DBB)
+  const dobMatch = text.match(/DBB(\d{8})/i);
+  let dob: string | undefined;
+  let rawDOB: string | undefined;
+
+  if (dobMatch) {
+    rawDOB = dobMatch[1];
+    const firstTwo = parseInt(rawDOB.substring(0, 2), 10);
+    if (firstTwo >= 1 && firstTwo <= 12) {
+      // MMDDYYYY -> YYYY-MM-DD
+      const mm = rawDOB.substring(0, 2);
+      const dd = rawDOB.substring(2, 4);
+      const yyyy = rawDOB.substring(4, 8);
+      dob = `${yyyy}-${mm}-${dd}`;
+    } else if (parseInt(rawDOB.substring(0, 4), 10) > 1900) {
+      // YYYYMMDD -> YYYY-MM-DD
+      const yyyy = rawDOB.substring(0, 4);
+      const mm = rawDOB.substring(4, 6);
+      const dd = rawDOB.substring(6, 8);
+      dob = `${yyyy}-${mm}-${dd}`;
+    }
+  }
+
+  // First name (DAC)
+  const fnMatch = text.match(/DAC([^\n\r]+)/i);
+  const firstName = fnMatch ? fnMatch[1].trim() : undefined;
+
+  // Last name (DCS or DAB)
+  const lnMatch = text.match(/DCS([^\n\r]+)/i) || text.match(/DAB([^\n\r]+)/i);
+  const lastName = lnMatch ? lnMatch[1].trim() : undefined;
+
+  // Address (DAG)
+  const addrMatch = text.match(/DAG([^\n\r]+)/i);
+  const address = addrMatch ? addrMatch[1].trim() : undefined;
+
+  // City (DAI)
+  const cityMatch = text.match(/DAI([^\n\r]+)/i);
+  const city = cityMatch ? cityMatch[1].trim() : undefined;
+
+  // State (DAJ)
+  const stateMatch = text.match(/DAJ([^\n\r]+)/i);
+  const state = stateMatch ? stateMatch[1].trim() : undefined;
+
+  // Zip (DAK)
+  const zipMatch = text.match(/DAK(\d{5})/i);
+  const zip = zipMatch ? zipMatch[1] : undefined;
+
+  if (!dob && !firstName && !lastName) return null;
+
+  return {
+    dob,
+    rawDOB,
+    firstName,
+    lastName,
+    fullName: firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName,
+    address,
+    city,
+    state,
+    zip
+  };
+}
+
+export function calculateAge(dobStr?: string): number | null {
+  if (!dobStr) return null;
+  const parts = dobStr.split('-');
+  if (parts.length !== 3) return null;
+  const yyyy = parseInt(parts[0], 10);
+  const mm = parseInt(parts[1], 10) - 1;
+  const dd = parseInt(parts[2], 10);
+  const birth = new Date(yyyy, mm, dd);
+  if (isNaN(birth.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
 }
 
 // --- Types ---
@@ -62,14 +163,25 @@ const SignaturePad = ({ label, onSave, onClear }: { label: string, onSave: (data
   };
 
   const save = () => {
-    if (sigCanvas.current?.isEmpty()) return;
-    onSave(sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png') || '');
+    if (sigCanvas.current?.isEmpty()) {
+      onClear();
+      return;
+    }
+    try {
+      const data = sigCanvas.current?.getCanvas().toDataURL('image/png') || '';
+      onSave(data);
+    } catch (err) {
+      onClear();
+    }
   };
 
   return (
     <div className="space-y-2">
-      <label className="form-label">{label}</label>
-      <div className="signature-pad overflow-hidden">
+      <label className="form-label font-bold flex items-center justify-between">
+        <span>{label}</span>
+        <span className="text-[10px] text-primary font-semibold">Draw signature below</span>
+      </label>
+      <div className="signature-pad overflow-hidden border-2 border-slate-300 rounded-2xl bg-white focus-within:border-primary transition-colors">
         <SignatureCanvas
           ref={sigCanvas}
           penColor="#1e293b"
@@ -77,12 +189,12 @@ const SignaturePad = ({ label, onSave, onClear }: { label: string, onSave: (data
           onEnd={save}
         />
       </div>
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center px-1">
         <span className="text-xs text-slate-400 italic">Sign in the box above</span>
         <button
           type="button"
           onClick={clear}
-          className="text-xs font-bold text-slate-500 hover:text-primary transition-colors"
+          className="text-xs font-bold text-slate-500 hover:text-primary transition-colors py-1 px-2 rounded-lg hover:bg-slate-100"
         >
           CLEAR PAD
         </button>
@@ -91,8 +203,39 @@ const SignaturePad = ({ label, onSave, onClear }: { label: string, onSave: (data
   );
 };
 
-const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture: (data: string) => void, imageSrc?: string }) => {
+const pdf417Reader = new BrowserPDF417Reader();
+
+const decodeBarcodeWithTimeout = (dataUrl: string, timeoutMs: number = 1200): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Scan timeout'));
+    }, timeoutMs);
+
+    pdf417Reader.decodeFromImageUrl(dataUrl)
+      .then(res => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
+const ImageCapture = ({
+  label,
+  onCapture,
+  imageSrc,
+  onIDParsed
+}: {
+  label: string;
+  onCapture: (data: string) => void;
+  imageSrc?: string;
+  onIDParsed?: (parsed: ParsedIDData) => void;
+}) => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState<string | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
@@ -107,8 +250,13 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
-            compressImage(event.target.result as string, 800, 0.7).then(compressed => {
+            const res = event.target.result as string;
+            onCapture(res);
+            compressImage(res, 800, 0.65).then(compressed => {
               onCapture(compressed);
+              setTimeout(() => {
+                processImageForBarcode(compressed);
+              }, 30);
             });
           }
         };
@@ -116,6 +264,25 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
       }
     };
     fileInput.click();
+  };
+
+  const processImageForBarcode = async (dataUrl: string) => {
+    if (!onIDParsed) return;
+    try {
+      setScanStatus('Scanning barcode...');
+      const result = await decodeBarcodeWithTimeout(dataUrl, 1200);
+      if (result && typeof result.getText === 'function' && result.getText()) {
+        const parsed = parseAAMVABarcode(result.getText());
+        if (parsed && parsed.dob) {
+          onIDParsed(parsed);
+          setScanStatus(`✓ Scanned Barcode (DOB: ${parsed.dob})`);
+          return;
+        }
+      }
+      setScanStatus(null);
+    } catch (err) {
+      setScanStatus(null);
+    }
   };
 
   useEffect(() => {
@@ -170,7 +337,7 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
     setIsCameraOpen(true);
   };
 
-  const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
+  const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.65): Promise<string> => {
     return new Promise((resolve) => {
       let img = new Image();
       img.src = base64Str;
@@ -190,22 +357,40 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
         ctx?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
-      img.onerror = () => resolve(base64Str); // fallback if error
+      img.onerror = () => resolve(base64Str);
     });
   };
 
   const capture = () => {
     if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d');
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      context?.drawImage(videoRef.current, 0, 0);
-      const data = canvasRef.current.toDataURL('image/jpeg');
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
 
-      compressImage(data, 800, 0.7).then(compressed => {
-        onCapture(compressed);
-        setIsCameraOpen(false);
-      });
+      let width = video.videoWidth || 800;
+      let height = video.videoHeight || 600;
+      const maxWidth = 800;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      context?.drawImage(video, 0, 0, width, height);
+
+      // Single-pass direct scale JPEG compression
+      const compressed = canvas.toDataURL('image/jpeg', 0.65);
+
+      // 1. Instantly display photo preview on screen (0ms delay)
+      onCapture(compressed);
+      stopCamera();
+
+      // 2. Background barcode scan (non-blocking microtask)
+      setTimeout(() => {
+        processImageForBarcode(compressed);
+      }, 30);
     }
   };
 
@@ -215,22 +400,33 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
 
   return (
     <div className="space-y-2">
-      <label className="form-label">{label}</label>
+      <label className="form-label flex items-center justify-between">
+        <span>{label}</span>
+        {scanStatus && (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+            {scanStatus}
+          </span>
+        )}
+      </label>
       {!imageSrc ? (
         <button
           type="button"
           onClick={startCamera}
-          className="w-full h-32 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-primary hover:text-primary transition-all bg-white"
+          className="w-full h-32 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-primary hover:text-primary transition-all bg-white group"
         >
-          <Camera size={32} />
-          <span className="font-bold text-sm">SCAN PHOTO ID</span>
+          <div className="flex items-center gap-2">
+            <Camera size={28} className="group-hover:scale-110 transition-transform" />
+            <ScanLine size={28} className="text-primary group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="font-bold text-sm">TAKE PHOTO OR SCAN ID BARCODE</span>
+          <span className="text-[10px] text-slate-400">Front ID photo or Back PDF417 Barcode</span>
         </button>
       ) : (
         <div className="relative group">
           <img src={imageSrc} className="w-full h-48 object-cover rounded-xl border-2 border-slate-200" />
           <button
             type="button"
-            onClick={() => onCapture('')}
+            onClick={() => { onCapture(''); setScanStatus(null); }}
             className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
           >
             <Trash2 size={16} />
@@ -249,7 +445,9 @@ const ImageCapture = ({ label, onCapture, imageSrc }: { label: string, onCapture
             <video ref={videoRef} autoPlay playsInline className="w-full max-w-lg rounded-2xl shadow-2xl" />
             <canvas ref={canvasRef} className="hidden" />
             <div className="mt-8 flex gap-4 w-full max-w-lg">
-              <button onClick={capture} className="flex-1 py-4 bg-primary text-white font-bold rounded-2xl text-lg shadow-xl">CAPTURE</button>
+              <button onClick={capture} className="flex-1 py-4 bg-primary text-white font-bold rounded-2xl text-lg shadow-xl flex items-center justify-center gap-2">
+                <Camera size={20} /> CAPTURE PHOTO / BARCODE
+              </button>
               <button onClick={stopCamera} className="px-8 py-4 bg-white/20 text-white font-bold rounded-2xl text-lg backdrop-blur-md">CANCEL</button>
             </div>
           </motion.div>
@@ -1647,15 +1845,21 @@ const App = () => {
                               VIEW FILE
                             </button>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFormToArchive(form);
-                                setSelectedArchiveArtist(form.artistName || '');
-                              }}
-                              className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors"
-                            >
-                              DONE
-                            </button>
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setFormToArchive(form);
+                                 setSelectedArchiveArtist(form.artistName || '');
+                                 const calcAge = form.dob ? calculateAge(form.dob) : null;
+                                 setInfoSheetData({
+                                   clientDOB: form.dob || form.scannedDOB || form.clientDOB || '',
+                                   clientAge: form.clientAge || (calcAge !== null ? String(calcAge) : ''),
+                                   idType: form.idType || (form.idVerified ? "State DL/ID (Barcode Scanned)" : "State Driver's License/ID")
+                                 });
+                               }}
+                               className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors"
+                             >
+                               DONE
+                             </button>
                           </div>
                         </motion.div>
                       ))}
@@ -2474,10 +2678,18 @@ const PrintableDocument = ({ client }: { client: any }) => {
       <div className="mt-1 border-t-2 border-black pt-1 print-id-section" style={{ breakInside: 'avoid' }}>
         <h3 className="text-[10px] font-bold mb-1 uppercase text-center">Identification Verification</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div className="text-center" style={{ breakInside: 'avoid' }}>
-            <p className="text-[8px] font-bold uppercase mb-0.5">Primary ID</p>
-            <img src={client.idPhoto || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
-          </div>
+          {(client.idPhotoFront || client.idPhoto || client.guardianIdPhotoFront || client.guardianIdPhoto) && (
+            <div className="text-center" style={{ breakInside: 'avoid' }}>
+              <p className="text-[8px] font-bold uppercase mb-0.5">Primary ID (Front)</p>
+              <img src={client.idPhotoFront || client.idPhoto || client.guardianIdPhotoFront || client.guardianIdPhoto} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
+            </div>
+          )}
+          {(client.idPhotoBack || client.guardianIdPhotoBack) && (
+            <div className="text-center" style={{ breakInside: 'avoid' }}>
+              <p className="text-[8px] font-bold uppercase mb-0.5">Primary ID (Back / Barcode)</p>
+              <img src={client.idPhotoBack || client.guardianIdPhotoBack} className="mx-auto border-2 border-black shadow-md object-contain max-h-[250px] print:max-h-[500px]" style={{ pageBreakInside: 'avoid' }} />
+            </div>
+          )}
           {client.minorIdPhoto && (
             <div className="text-center" style={{ breakInside: 'avoid' }}>
               <p className="text-[8px] font-bold uppercase mb-0.5">Minor ID</p>
@@ -2497,9 +2709,21 @@ const PrintableDocument = ({ client }: { client: any }) => {
 };
 
 const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (data: any) => void }) => {
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [submitting, setSubmitting] = useState(false);
+  const [passcodeAttempt, setPasscodeAttempt] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
+
   const [formData, setFormData] = useState<any>({
     name: '',
+    dob: '',
+    scannedDOB: '',
+    idVerified: false,
+    staffVerified: false,
+    idPhotoFront: '',
+    idPhotoBack: '',
+    guardianIdPhotoFront: '',
+    guardianIdPhotoBack: '',
     date: new Date().toISOString().split('T')[0],
     address: '',
     phone: '',
@@ -2530,26 +2754,85 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
     }));
   };
 
+  const handleIDParsed = (parsed: ParsedIDData) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      dob: parsed.dob || prev.dob,
+      scannedDOB: parsed.dob || prev.scannedDOB,
+      idVerified: true,
+      name: prev.name || parsed.fullName || '',
+      address: prev.address || parsed.address || '',
+      city: prev.city || parsed.city || '',
+      state: prev.state || parsed.state || '',
+      zip: prev.zip || parsed.zip || ''
+    }));
+  };
+
   const isMinor = type === 'minor-piercing';
+  const calculatedAge = useMemo(() => calculateAge(formData.dob), [formData.dob]);
+  const isUnderage = useMemo(() => !isMinor && calculatedAge !== null && calculatedAge < 18, [isMinor, calculatedAge]);
+  const isDOBMismatch = useMemo(() => Boolean(formData.scannedDOB && formData.dob && formData.dob !== formData.scannedDOB), [formData.dob, formData.scannedDOB]);
+
+  // Step Validation Gates
+  const canGoToStep3 = useMemo(() => {
+    if (isUnderage) return false;
+    if (!formData.dob) return false;
+    if (isMinor) {
+      return Boolean(formData.parentGuardianName && formData.minorName && formData.phone && formData.address);
+    }
+    return Boolean(formData.name && formData.phone && formData.address);
+  }, [formData, isMinor, isUnderage]);
+
+  const canGoToStep4 = useMemo(() => {
+    if (isMinor) {
+      return Boolean(formData.guardianIdPhotoBack || formData.guardianIdPhotoFront || formData.guardianIdPhoto);
+    }
+    return Boolean(formData.idPhotoBack || formData.idPhotoFront || formData.idPhoto);
+  }, [formData, isMinor]);
 
   const canSubmit = useMemo(() => {
+    if (isUnderage || !formData.staffVerified) return false;
+
     if (isMinor) {
-      return (
+      return Boolean(
         formData.parentGuardianName &&
         formData.minorName &&
-        formData.guardianIdPhoto &&
+        formData.dob &&
         formData.adultSignature &&
         formData.minorSignature &&
         formData.aftercareAcknowledged
       );
     }
-    return (
+
+    return Boolean(
       formData.name &&
+      formData.dob &&
       formData.phone &&
-      formData.idPhoto &&
       formData.signature &&
       formData.aftercareAcknowledged
     );
+  }, [formData, isMinor, isUnderage]);
+
+  const handleVerifyStaffPasscode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcodeAttempt.trim().toUpperCase() === STAFF_PASSCODE.toUpperCase()) {
+      setFormData((prev: any) => ({ ...prev, staffVerified: true }));
+      setPasscodeError('');
+      setCurrentStep(5);
+    } else {
+      setPasscodeError('Invalid staff passcode. Please ask receptionist or artist to enter passcode.');
+    }
+  };
+
+  const step5LockReason = useMemo(() => {
+    if (isMinor) {
+      if (!formData.adultSignature) return "✍️ Action Required: Please draw the Guardian Signature above.";
+      if (!formData.minorSignature) return "✍️ Action Required: Please draw the Minor Signature above.";
+    } else {
+      if (!formData.signature) return "✍️ Action Required: Please draw your signature in the box above.";
+    }
+    if (!formData.aftercareAcknowledged) return "☑️ Action Required: Please check the acknowledgment box above to certify.";
+    return null;
   }, [formData, isMinor]);
 
   const handleSubmit = async () => {
@@ -2563,138 +2846,390 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
   };
 
   return (
-    <div className="space-y-8 sm:space-y-12">
-      {/* Risk Disclosure Section */}
-      <section className="bg-slate-50 p-4 sm:p-6 rounded-2xl border border-slate-200">
-        <h3 className="text-[10px] sm:text-sm font-black text-slate-900 uppercase tracking-widest mb-3 sm:mb-4">
-          {isMinor ? 'Parental Consent & Release' : 'Risk Disclosure & Release'}
-        </h3>
-        <div className="text-[10px] sm:text-xs text-slate-600 space-y-2 sm:space-y-3 leading-relaxed">
-          {type === 'tattoo' ? (
-            <>
-              <p className="font-bold">PLEASE READ:</p>
-              <p>You are hereby notified of the possible risks and dangers associated with the application of each tattoo. These risks and dangers include, but are not limited to, at least the following:</p>
-              <ol className="list-decimal ml-6 space-y-1">
-                <li>the possibility of discomfort or pain;</li>
-                <li>the permanence of the markings;</li>
-                <li>the risk of infection; and</li>
-                <li>the possibility of allergic reaction to the pigments or other materials used.</li>
-              </ol>
-            </>
-          ) : isMinor ? (
-            <div className="space-y-4">
-              <p>I acknowledge by signing this release form that I hereby release THE PINK ELEPHANT and it's employees and agents from all manner of liabilities, claims, actions, and demands, in law or in equity, which I or my heirs have or might have now or hereafter by reason of complying with my requests to pierce my child.</p>
-              <p>I certify that I am the parent or legal guardian of the minor receiving the piercing. I agree that I will assume all responsibility for any medical, legal, or other situation resulting from my request to pierce my child. I understand that I must remain in the presence of this minor during piercing procedures.</p>
-              <p>I understand that my child will be pierced using appropriate instruments and techniques.</p>
+    <div className="space-y-6">
+      {/* Mobile Step Progress Bar */}
+      <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex justify-between items-center text-xs font-black uppercase tracking-widest text-slate-500">
+          <span>Step {currentStep} of 5</span>
+          <span className="text-primary font-black">
+            {currentStep === 1 && '1. Risk Release'}
+            {currentStep === 2 && '2. Personal Info'}
+            {currentStep === 3 && '3. ID Capture'}
+            {currentStep === 4 && '4. Staff ID Check 🔒'}
+            {currentStep === 5 && '5. Sign & Submit'}
+          </span>
+        </div>
+        <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+          <div
+            className="bg-primary h-full transition-all duration-300 rounded-full"
+            style={{ width: `${(currentStep / 5) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* STEP 1: RISK DISCLOSURE & RELEASE */}
+      {currentStep === 1 && (
+        <div className="space-y-6">
+          <section className="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4">
+            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
+              {isMinor ? 'Parental Consent & Risk Release' : 'Risk Disclosure & Release'}
+            </h3>
+            <div className="text-xs text-slate-600 space-y-3 leading-relaxed">
+              {type === 'tattoo' ? (
+                <>
+                  <p className="font-bold">PLEASE READ CAREFULLY:</p>
+                  <p>You are hereby notified of the possible risks and dangers associated with the application of each tattoo. These risks and dangers include, but are not limited to, at least the following:</p>
+                  <ol className="list-decimal ml-6 space-y-1.5">
+                    <li>the possibility of discomfort or pain;</li>
+                    <li>the permanence of the markings;</li>
+                    <li>the risk of infection; and</li>
+                    <li>the possibility of allergic reaction to the pigments or other materials used.</li>
+                  </ol>
+                </>
+              ) : isMinor ? (
+                <div className="space-y-3">
+                  <p>I acknowledge by signing this release form that I hereby release THE PINK ELEPHANT and its employees and agents from all manner of liabilities, claims, actions, and demands, in law or in equity, which I or my heirs have or might have now or hereafter by reason of complying with my requests to pierce my child.</p>
+                  <p>I certify that I am the parent or legal guardian of the minor receiving the piercing. I agree that I will assume all responsibility for any medical, legal, or other situation resulting from my request to pierce my child. I understand that I must remain in the presence of this minor during piercing procedures.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="font-bold">PLEASE READ CAREFULLY:</p>
+                  <p>You are hereby notified of the possible risks and dangers associated with receiving a body piercing. These risk and dangers include, but are not limited to, at least the following:</p>
+                  <ol className="list-decimal ml-6 space-y-1.5">
+                    <li>The possibility of discomfort or pain;</li>
+                    <li>The possibility of scarring;</li>
+                    <li>The possibility of bleeding;</li>
+                    <li>The possibility of swelling;</li>
+                    <li>The risk of infection;</li>
+                    <li>The possibility of nerve damage; and</li>
+                    <li>The increased risk of adolescents during certain stages of development.</li>
+                  </ol>
+                </>
+              )}
+              <p className="font-black text-slate-900 border-t border-slate-200 pt-3 text-center">
+                NO PERSON MAY BE {type === 'tattoo' ? 'TATTOOED' : 'PIERCED'} WHO APPEARS TO BE UNDER THE INFLUENCE OF ALCOHOL OR DRUGS.
+              </p>
             </div>
-          ) : (
-            <>
-              <p className="font-bold">PLEASE READ:</p>
-              <p>You are hereby notified of the possible risks and dangers associated with receiving a body piercing. These risk and dangers include, but are not limited to, at least the following:</p>
-              <ol className="list-decimal ml-6 space-y-1">
-                <li>The possibility of discomfort or pain;</li>
-                <li>The possibility of scarring;</li>
-                <li>The possibility of bleeding;</li>
-                <li>The possibility of swelling;</li>
-                <li>The risk of infection;</li>
-                <li>The possibility of nerve damage; and</li>
-                <li>The increased risk of adolescents during certain stages of development.</li>
-              </ol>
-            </>
-          )}
-          <p className="font-black text-slate-900 border-t border-slate-200 pt-3 text-center">
-            NO PERSON MAY BE {type === 'tattoo' ? 'TATTOOED' : 'PIERCED'} WHO APPEARS TO BE UNDER THE INFLUENCE OF ALCOHOL OR DRUGS.
-          </p>
-        </div>
-      </section>
+          </section>
 
-      {/* Personal Info */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        {isMinor ? (
-          <>
-            <FormField label="Parent / Guardian Name" name="parentGuardianName" value={formData.parentGuardianName} onChange={handleChange} icon={User} />
-            <FormField label="Minor Name" name="minorName" value={formData.minorName} onChange={handleChange} icon={User} />
-            <FormField label="Relation to Minor" name="relationToMinor" value={formData.relationToMinor} onChange={handleChange} icon={Users} />
-          </>
-        ) : (
-          <FormField label="Full Name" name="name" value={formData.name} onChange={handleChange} icon={User} />
-        )}
-        <FormField label="Phone Number" name="phone" type="tel" value={formData.phone} onChange={handleChange} icon={Phone} />
-        <FormField label="Address" name="address" value={formData.address} onChange={handleChange} icon={MapPin} />
-        <div className="grid grid-cols-3 gap-3 sm:gap-4">
-          <div className="col-span-1"><FormField label="City" name="city" value={formData.city} onChange={handleChange} /></div>
-          <div className="col-span-1"><FormField label="State" name="state" value={formData.state} onChange={handleChange} /></div>
-          <div className="col-span-1"><FormField label="Zip" name="zip" value={formData.zip} onChange={handleChange} /></div>
+          <button
+            type="button"
+            onClick={() => setCurrentStep(2)}
+            className="btn-primary w-full py-5 text-lg font-black shadow-xl shadow-primary/20 flex items-center justify-center gap-2"
+          >
+            I READ & ACCEPT TERMS ➔
+          </button>
         </div>
-      </section>
-
-      {isMinor && (
-        <section className="space-y-6">
-          <div className="space-y-1.5">
-            <label className="form-label">Procedure Explanation</label>
-            <textarea
-              name="procedureExplanation"
-              className="form-input min-h-[100px]"
-              placeholder="Explain the manner in which the procedure will be performed and the specific part of the body..."
-              value={formData.procedureExplanation}
-              onChange={handleChange}
-            />
-          </div>
-          <FormField label="Expected Healing Time" name="healingTime" placeholder="e.g. 4-6 weeks" value={formData.healingTime} onChange={handleChange} icon={Calendar} />
-        </section>
       )}
 
-      {/* IDs */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-        {isMinor ? (
-          <>
-            <ImageCapture label="Guardian Photo ID" onCapture={(img) => setFormData({ ...formData, guardianIdPhoto: img })} imageSrc={formData.guardianIdPhoto} />
-            <ImageCapture label="Minor Photo ID" onCapture={(img) => setFormData({ ...formData, minorIdPhoto: img })} imageSrc={formData.minorIdPhoto} />
-            <ImageCapture label="Minor Birth Certificate" onCapture={(img) => setFormData({ ...formData, minorBirthCert: img })} imageSrc={formData.minorBirthCert} />
-          </>
-        ) : (
-          <ImageCapture label="Valid Photo ID" onCapture={(img) => setFormData({ ...formData, idPhoto: img })} imageSrc={formData.idPhoto} />
-        )}
-      </section>
+      {/* STEP 2: PERSONAL INFO & DOB */}
+      {currentStep === 2 && (
+        <div className="space-y-6">
+          {/* Age Verification Banner */}
+          {calculatedAge !== null && (
+            <div>
+              {isUnderage ? (
+                <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-300 text-red-800 flex items-start gap-3 shadow-sm animate-pulse">
+                  <AlertTriangle size={26} className="text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-black text-sm uppercase tracking-wider text-red-900">UNDERAGE CLIENT DETECTED (AGE: {calculatedAge})</h4>
+                    <p className="text-xs mt-1 font-medium text-red-700">
+                      Adult tattoo and piercing consent forms require the client to be 18 years of age or older. You cannot proceed with this form.
+                    </p>
+                  </div>
+                </div>
+              ) : calculatedAge >= 18 ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 text-emerald-900 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={24} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <h4 className="font-black text-xs uppercase tracking-wider text-emerald-950">AGE VERIFIED (AGE: {calculatedAge})</h4>
+                      <p className="text-[11px] font-semibold text-emerald-700">Client satisfies 18+ legal age requirement.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-blue-50 border-2 border-blue-200 text-blue-900 flex items-center gap-3">
+                  <Info size={22} className="text-blue-600 shrink-0" />
+                  <div>
+                    <h4 className="font-black text-xs uppercase tracking-wider">MINOR CLIENT (AGE: {calculatedAge})</h4>
+                    <p className="text-[11px] text-blue-700">Minor piercing consent form</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* Signatures */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-        {isMinor ? (
-          <>
-            <SignaturePad label="Guardian Signature" onSave={(sig) => setFormData({ ...formData, adultSignature: sig })} onClear={() => setFormData({ ...formData, adultSignature: '' })} />
-            <SignaturePad label="Minor Signature" onSave={(sig) => setFormData({ ...formData, minorSignature: sig })} onClear={() => setFormData({ ...formData, minorSignature: '' })} />
-          </>
-        ) : (
-          <SignaturePad label="Your Signature" onSave={(sig) => setFormData({ ...formData, signature: sig })} onClear={() => setFormData({ ...formData, signature: '' })} />
-        )}
-      </section>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {isMinor ? (
+              <>
+                <FormField label="Parent / Guardian Name" name="parentGuardianName" value={formData.parentGuardianName} onChange={handleChange} icon={User} required />
+                <FormField label="Minor Name" name="minorName" value={formData.minorName} onChange={handleChange} icon={User} required />
+                <FormField label="Relation to Minor" name="relationToMinor" value={formData.relationToMinor} onChange={handleChange} icon={Users} required />
+              </>
+            ) : (
+              <FormField label="Full Name" name="name" value={formData.name} onChange={handleChange} icon={User} required />
+            )}
+            <FormField label="Date of Birth (DOB)" name="dob" type="date" value={formData.dob} onChange={handleChange} icon={Calendar} required />
+            <FormField label="Phone Number" name="phone" type="tel" value={formData.phone} onChange={handleChange} icon={Phone} required />
+            <FormField label="Address" name="address" value={formData.address} onChange={handleChange} icon={MapPin} required />
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1"><FormField label="City" name="city" value={formData.city} onChange={handleChange} /></div>
+              <div className="col-span-1"><FormField label="State" name="state" value={formData.state} onChange={handleChange} /></div>
+              <div className="col-span-1"><FormField label="Zip" name="zip" value={formData.zip} onChange={handleChange} /></div>
+            </div>
+          </section>
 
-      {/* Final Acknowledgment */}
-      <section className="pt-8 border-t border-slate-200">
-        <label className="flex items-start gap-4 cursor-pointer group">
-          <div className="relative flex items-center h-6">
-            <input
-              type="checkbox"
-              name="aftercareAcknowledged"
-              className="w-6 h-6 rounded-lg border-2 border-slate-300 text-primary focus:ring-primary transition-all cursor-pointer"
-              checked={formData.aftercareAcknowledged}
-              onChange={handleChange}
-            />
+          {isMinor && (
+            <section className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="form-label">Procedure Explanation</label>
+                <textarea
+                  name="procedureExplanation"
+                  className="form-input min-h-[90px]"
+                  placeholder="Explain procedure and body part..."
+                  value={formData.procedureExplanation}
+                  onChange={handleChange}
+                />
+              </div>
+              <FormField label="Expected Healing Time" name="healingTime" placeholder="e.g. 4-6 weeks" value={formData.healingTime} onChange={handleChange} icon={Calendar} />
+            </section>
+          )}
+
+          <div className="flex gap-4 pt-2">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="py-4 px-6 bg-slate-100 text-slate-700 font-black rounded-2xl text-base hover:bg-slate-200 transition-colors"
+            >
+              ⬅ BACK
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(3)}
+              disabled={!canGoToStep3}
+              className="btn-primary flex-1 py-4 text-base font-black shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              NEXT: ID CAPTURE ➔
+            </button>
           </div>
-          <div className="text-sm font-medium text-slate-600 leading-relaxed">
-            I certify under penalty of perjury that the information herein is true and correct.
-            I have received a copy of applicable written care instructions and I have read and understand such written care instructions.
-          </div>
-        </label>
-      </section>
+        </div>
+      )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={!canSubmit || submitting}
-        className="btn-primary w-full py-6 text-xl shadow-xl shadow-primary/20"
-      >
-        {submitting ? 'SUBMITTING...' : 'SUBMIT CONSENT FORM'}
-      </button>
+      {/* STEP 3: ID CAPTURE (FRONT PHOTO ID) */}
+      {currentStep === 3 && (
+        <div className="space-y-6">
+          <section className="space-y-4">
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center justify-between">
+              <span>Identification Photo</span>
+              <span className="text-red-500 text-[10px] font-bold">* Photo ID Required</span>
+            </h3>
+            <div>
+              {isMinor ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <ImageCapture
+                    label="Guardian Photo ID (Required)"
+                    onCapture={(img) => setFormData({ ...formData, guardianIdPhotoFront: img, guardianIdPhoto: img })}
+                    imageSrc={formData.guardianIdPhotoFront || formData.guardianIdPhoto}
+                  />
+                  <ImageCapture
+                    label="Minor Birth Certificate / ID"
+                    onCapture={(img) => setFormData({ ...formData, minorBirthCert: img })}
+                    imageSrc={formData.minorBirthCert}
+                  />
+                </div>
+              ) : (
+                <ImageCapture
+                  label="Take Photo of Valid ID (Required)"
+                  onCapture={(img) => setFormData({ ...formData, idPhotoFront: img, idPhoto: img })}
+                  imageSrc={formData.idPhotoFront || formData.idPhoto}
+                />
+              )}
+            </div>
+          </section>
+
+          <div className="flex gap-4 pt-2">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              className="py-4 px-6 bg-slate-100 text-slate-700 font-black rounded-2xl text-base hover:bg-slate-200 transition-colors"
+            >
+              ⬅ BACK
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(4)}
+              disabled={!canGoToStep4}
+              className="btn-primary flex-1 py-4 text-base font-black shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              NEXT: STAFF CHECK 🔒 ➔
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: PHYSICAL STAFF VERIFICATION GATE (PASSCODE LOCK) */}
+      {currentStep === 4 && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="p-6 bg-amber-50 rounded-3xl border-2 border-amber-300 text-amber-950 space-y-4 text-center shadow-lg">
+            <div className="w-16 h-16 bg-amber-500/20 text-amber-700 rounded-full flex items-center justify-center mx-auto">
+              <Lock size={36} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-tight text-amber-950">PHYSICAL ID CHECK REQUIRED</h3>
+              <p className="text-xs sm:text-sm font-semibold text-amber-800 mt-2 leading-relaxed">
+                Please hand your phone along with your physical ID card to the receptionist or your tattoo artist.
+              </p>
+            </div>
+          </div>
+
+          {/* Captured Data Summary for Staff */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Captured ID Summary for Staff Check</h4>
+            
+            {/* Captured ID Image Preview */}
+            {(formData.idPhotoFront || formData.idPhoto || formData.guardianIdPhotoFront || formData.guardianIdPhoto) ? (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Captured Photo ID Image</span>
+                <img
+                  src={formData.idPhotoFront || formData.idPhoto || formData.guardianIdPhotoFront || formData.guardianIdPhoto}
+                  alt="Captured ID"
+                  className="max-h-48 rounded-lg mx-auto border border-slate-300 object-contain bg-white shadow-sm"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600 font-bold bg-amber-50 p-3 rounded-xl border border-amber-200 text-center">
+                ⚠️ No Photo ID captured yet
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 text-xs font-bold pt-1">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Client Name</span>
+                <span className="text-slate-900 text-sm">{formData.name || formData.minorName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Calculated Age</span>
+                <span className="text-slate-900 text-sm">{calculatedAge !== null ? `${calculatedAge} Years Old` : '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Entered DOB</span>
+                <span className="text-slate-900">{formData.dob || '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Form Type</span>
+                <span className="text-slate-900 uppercase">{type}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Staff Passcode Authentication */}
+          <form onSubmit={handleVerifyStaffPasscode} className="bg-slate-900 text-white p-6 rounded-3xl space-y-4 shadow-xl">
+            <div className="flex items-center gap-2 text-primary font-black uppercase text-xs tracking-widest">
+              <ShieldCheck size={18} />
+              <span>Studio Staff Authorization</span>
+            </div>
+            <p className="text-xs text-slate-300 font-medium">
+              Staff: Inspect physical ID card, then enter Staff Passcode to unlock client signature.
+            </p>
+
+            <div className="space-y-2">
+              <input
+                type="password"
+                placeholder="Enter Staff Passcode..."
+                value={passcodeAttempt}
+                onChange={(e) => setPasscodeAttempt(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-800 border-2 border-slate-700 rounded-2xl text-white font-bold text-center tracking-widest text-lg focus:border-primary outline-none"
+              />
+              {passcodeError && (
+                <p className="text-xs font-bold text-red-400 text-center animate-shake">{passcodeError}</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="btn-primary w-full py-4 text-base font-black shadow-lg flex items-center justify-center gap-2"
+            >
+              <CheckCircle size={20} /> VERIFY & UNLOCK SIGNATURE ➔
+            </button>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => setCurrentStep(3)}
+            className="w-full py-3 text-slate-500 font-bold text-xs hover:text-slate-700 text-center"
+          >
+            ⬅ Back to ID Photos
+          </button>
+        </div>
+      )}
+
+      {/* STEP 5: SIGNATURES & FINAL SUBMISSION */}
+      {currentStep === 5 && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={20} className="text-emerald-600" />
+              <span className="text-xs font-black uppercase">Staff Physical ID Verified ✓</span>
+            </div>
+            <span className="text-[10px] font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-full">UNLOCKED</span>
+          </div>
+
+          {/* Signatures */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {isMinor ? (
+              <>
+                <SignaturePad label="Guardian Signature" onSave={(sig) => setFormData({ ...formData, adultSignature: sig })} onClear={() => setFormData({ ...formData, adultSignature: '' })} />
+                <SignaturePad label="Minor Signature" onSave={(sig) => setFormData({ ...formData, minorSignature: sig })} onClear={() => setFormData({ ...formData, minorSignature: '' })} />
+              </>
+            ) : (
+              <SignaturePad label="Your Signature" onSave={(sig) => setFormData({ ...formData, signature: sig })} onClear={() => setFormData({ ...formData, signature: '' })} />
+            )}
+          </section>
+
+          {/* Final Acknowledgment Checkbox */}
+          <section className="pt-4 border-t border-slate-200">
+            <label className="flex items-start gap-4 cursor-pointer group">
+              <div className="relative flex items-center h-6">
+                <input
+                  type="checkbox"
+                  name="aftercareAcknowledged"
+                  className="w-6 h-6 rounded-lg border-2 border-slate-300 text-primary focus:ring-primary transition-all cursor-pointer"
+                  checked={formData.aftercareAcknowledged}
+                  onChange={handleChange}
+                />
+              </div>
+              <div className="text-xs font-medium text-slate-600 leading-relaxed">
+                I certify under penalty of perjury that the information herein is true and correct.
+                I have received a copy of applicable written care instructions and I have read and understand such written care instructions.
+              </div>
+            </label>
+          </section>
+
+          {/* Guidance Alert Banner & Submit Button */}
+          <div className="space-y-3 pt-2">
+            {step5LockReason ? (
+              <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs sm:text-sm font-bold text-center shadow-sm">
+                {step5LockReason}
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold text-center shadow-sm flex items-center justify-center gap-2">
+                <CheckCircle size={18} className="text-emerald-600" />
+                <span>All requirements complete! Click below to submit your consent form.</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit || submitting}
+              className="btn-primary w-full py-6 text-xl font-black shadow-xl shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+            >
+              {submitting ? 'SUBMITTING...' : 'SUBMIT CONSENT FORM'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
