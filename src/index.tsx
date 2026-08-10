@@ -412,14 +412,16 @@ const ImageCapture = ({
         <button
           type="button"
           onClick={startCamera}
-          className="w-full h-32 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-primary hover:text-primary transition-all bg-white group"
+          className="w-full h-36 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-primary hover:text-primary transition-all bg-white group p-4"
         >
-          <div className="flex items-center gap-2">
-            <Camera size={28} className="group-hover:scale-110 transition-transform" />
-            <ScanLine size={28} className="text-primary group-hover:scale-110 transition-transform" />
+          <div className="flex items-center gap-2 text-primary">
+            <Camera size={30} className="group-hover:scale-110 transition-transform" />
+            <ScanLine size={30} className="group-hover:scale-110 transition-transform" />
           </div>
-          <span className="font-bold text-sm">TAKE PHOTO OR SCAN ID BARCODE</span>
-          <span className="text-[10px] text-slate-400">Front ID photo or Back PDF417 Barcode</span>
+          <span className="font-black text-sm text-slate-900">TAKE PHOTO OF FRONT OF ID</span>
+          <span className="text-[11px] font-semibold text-rose-600 bg-rose-50 px-3 py-1 rounded-full border border-rose-200">
+            📷 Must show FRONT of ID (Photo, Legal Name & DOB)
+          </span>
         </button>
       ) : (
         <div className="relative group">
@@ -442,11 +444,32 @@ const ImageCapture = ({
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4"
           >
-            <video ref={videoRef} autoPlay playsInline className="w-full max-w-lg rounded-2xl shadow-2xl" />
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="mt-8 flex gap-4 w-full max-w-lg">
-              <button onClick={capture} className="flex-1 py-4 bg-primary text-white font-bold rounded-2xl text-lg shadow-xl flex items-center justify-center gap-2">
-                <Camera size={20} /> CAPTURE PHOTO / BARCODE
+            <div className="text-center mb-4 text-white space-y-1">
+              <h3 className="text-xl font-black tracking-wide text-amber-300 uppercase flex items-center justify-center gap-2">
+                <Camera size={24} /> PHOTO OF FRONT OF ID
+              </h3>
+              <p className="text-xs text-slate-200 font-semibold bg-white/10 px-4 py-1.5 rounded-full inline-block backdrop-blur-sm">
+                Line up the FRONT face of your ID (showing photo & details)
+              </p>
+            </div>
+
+            <div className="relative w-full max-w-lg">
+              <video ref={videoRef} autoPlay playsInline className="w-full rounded-2xl shadow-2xl border-2 border-slate-700" />
+              <canvas ref={canvasRef} className="hidden" />
+
+              <div className="absolute inset-4 sm:inset-6 border-2 border-dashed border-amber-400 rounded-xl pointer-events-none flex flex-col items-center justify-between p-4 bg-amber-400/5">
+                <span className="bg-amber-400 text-slate-950 text-xs font-black px-3 py-1 rounded-full shadow-md">
+                  POSITION FRONT OF ID HERE
+                </span>
+                <span className="bg-black/75 text-amber-200 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm">
+                  Must show Photo, Full Legal Name & DOB
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-4 w-full max-w-lg">
+              <button onClick={capture} className="flex-1 py-4 bg-primary text-white font-black rounded-2xl text-lg shadow-xl flex items-center justify-center gap-2">
+                <Camera size={22} /> CAPTURE FRONT OF ID
               </button>
               <button onClick={stopCamera} className="px-8 py-4 bg-white/20 text-white font-bold rounded-2xl text-lg backdrop-blur-md">CANCEL</button>
             </div>
@@ -2854,7 +2877,7 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
           <span className="text-primary font-black">
             {currentStep === 1 && '1. Risk Release'}
             {currentStep === 2 && '2. Personal Info'}
-            {currentStep === 3 && '3. ID Capture'}
+            {currentStep === 3 && '3. Front ID Capture'}
             {currentStep === 4 && '4. Staff ID Check 🔒'}
             {currentStep === 5 && '5. Sign & Submit'}
           </span>
@@ -3019,28 +3042,46 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
       {/* STEP 3: ID CAPTURE (FRONT PHOTO ID) */}
       {currentStep === 3 && (
         <div className="space-y-6">
+          {/* Explicit Alert Banner for Front of ID */}
+          <div className="p-5 bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-orange-500/10 rounded-3xl border-2 border-amber-400/80 text-amber-950 space-y-2 shadow-md">
+            <div className="flex items-center gap-2 text-amber-900">
+              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
+                <Camera size={22} />
+              </div>
+              <h4 className="text-sm font-black uppercase tracking-wide">
+                PHOTO OF FRONT OF ID REQUIRED
+              </h4>
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-amber-950 leading-relaxed pl-1">
+              Please take a clear picture of the <strong>FRONT face of your valid Photo ID</strong> (Driver's License, State ID, Passport, or Military ID). 
+              Your <strong>photo, full legal name, and date of birth</strong> must be clearly readable.
+            </p>
+          </div>
+
           <section className="space-y-4">
             <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center justify-between">
               <span>Identification Photo</span>
-              <span className="text-red-500 text-[10px] font-bold">* Photo ID Required</span>
+              <span className="text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-md border border-rose-200 text-[10px] font-black">
+                * FRONT PHOTO ID REQUIRED
+              </span>
             </h3>
             <div>
               {isMinor ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <ImageCapture
-                    label="Guardian Photo ID (Required)"
+                    label="Guardian FRONT Photo ID (Required)"
                     onCapture={(img) => setFormData({ ...formData, guardianIdPhotoFront: img, guardianIdPhoto: img })}
                     imageSrc={formData.guardianIdPhotoFront || formData.guardianIdPhoto}
                   />
                   <ImageCapture
-                    label="Minor Birth Certificate / ID"
+                    label="Minor FRONT Photo ID / Birth Certificate"
                     onCapture={(img) => setFormData({ ...formData, minorBirthCert: img })}
                     imageSrc={formData.minorBirthCert}
                   />
                 </div>
               ) : (
                 <ImageCapture
-                  label="Take Photo of Valid ID (Required)"
+                  label="Take Photo of FRONT of Valid ID (Required)"
                   onCapture={(img) => setFormData({ ...formData, idPhotoFront: img, idPhoto: img })}
                   imageSrc={formData.idPhotoFront || formData.idPhoto}
                 />
