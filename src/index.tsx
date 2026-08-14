@@ -490,6 +490,158 @@ const FormField = ({ label, icon: Icon, ...props }: any) => (
   </div>
 );
 
+// --- DOB Picker (Year → Month → Day) ---
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const DOBPicker = ({ value, onChange, required }: { value: string, onChange: (e: { target: { name: string, value: string } }) => void, required?: boolean }) => {
+  const currentYear = new Date().getFullYear();
+  const parts = value ? value.split('-') : [];
+  const initYear  = parts[0] ? parseInt(parts[0], 10) : null;
+  const initMonth = parts[1] ? parseInt(parts[1], 10) : null;
+  const initDay   = parts[2] ? parseInt(parts[2], 10) : null;
+
+  const [step, setStep] = useState<'year' | 'month' | 'day'>('year');
+  const [selYear,  setSelYear]  = useState<number | null>(initYear);
+  const [selMonth, setSelMonth] = useState<number | null>(initMonth);
+  const [selDay,   setSelDay]   = useState<number | null>(initDay);
+  const [open, setOpen] = useState(false);
+
+  const years = Array.from({ length: currentYear - 1919 }, (_, i) => currentYear - i);
+
+  const daysInMonth = (y: number, m: number) => new Date(y, m, 0).getDate();
+
+  const commit = (y: number, m: number, d: number) => {
+    const mm = String(m).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    onChange({ target: { name: 'dob', value: `${y}-${mm}-${dd}` } });
+    setOpen(false);
+  };
+
+  const displayValue = selYear && selMonth && selDay
+    ? `${MONTHS[selMonth - 1]} ${selDay}, ${selYear}`
+    : 'Select date of birth';
+
+  const handleYearSelect = (y: number) => { setSelYear(y); setSelMonth(null); setSelDay(null); setStep('month'); };
+  const handleMonthSelect = (m: number) => { setSelMonth(m); setSelDay(null); setStep('day'); };
+  const handleDaySelect   = (d: number) => { setSelDay(d); commit(selYear!, selMonth!, d); setStep('year'); };
+
+  const handleOpen = () => { setStep('year'); setOpen(true); };
+
+  const totalDays = selYear && selMonth ? daysInMonth(selYear, selMonth) : 31;
+  const dayNums   = Array.from({ length: totalDays }, (_, i) => i + 1);
+
+  return (
+    <div className="space-y-1.5 relative">
+      <label className="form-label flex items-center gap-2">
+        <Calendar size={14} className="text-primary" />
+        DATE OF BIRTH (DOB)
+      </label>
+      <button
+        type="button"
+        onClick={handleOpen}
+        className="form-input w-full text-left flex items-center justify-between"
+        style={{ cursor: 'pointer' }}
+      >
+        <span className={selYear && selMonth && selDay ? 'text-slate-900 font-semibold' : 'text-slate-400'}>
+          {displayValue}
+        </span>
+        <Calendar size={16} className="text-primary flex-shrink-0" />
+      </button>
+
+      {open && (
+        <div
+          style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            style={{ background:'#fff', borderRadius:'1.25rem', padding:'1.5rem', width:'100%', maxWidth:'360px', boxShadow:'0 25px 60px rgba(0,0,0,0.35)', maxHeight:'85vh', display:'flex', flexDirection:'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Breadcrumb header */}
+            <div style={{ marginBottom:'1rem' }}>
+              <p style={{ fontSize:'10px', fontWeight:900, color:'#db2777', letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:'6px' }}>Date of Birth</p>
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                {(['year','month','day'] as const).map((s, idx) => {
+                  const labels = [selYear ? String(selYear) : 'Year', selMonth ? MONTHS[selMonth-1].slice(0,3) : 'Month', selDay ? String(selDay) : 'Day'];
+                  const enabled = idx === 0 || (idx === 1 && selYear != null) || (idx === 2 && selYear != null && selMonth != null);
+                  return (
+                    <button key={s} type="button" disabled={!enabled}
+                      onClick={() => enabled && setStep(s)}
+                      style={{ padding:'4px 12px', borderRadius:'999px', fontSize:'12px', fontWeight:700, border:'none', cursor: enabled ? 'pointer' : 'default',
+                        background: step === s ? '#db2777' : '#f1f5f9', color: step === s ? '#fff' : '#64748b', opacity: enabled ? 1 : 0.4 }}>
+                      {labels[idx]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ overflowY:'auto', flex:1 }}>
+              {step === 'year' && (
+                <>
+                  <p style={{ fontSize:'11px', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'10px' }}>Select Your Birth Year</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'6px' }}>
+                    {years.map(y => (
+                      <button key={y} type="button" onClick={() => handleYearSelect(y)}
+                        style={{ padding:'10px 4px', borderRadius:'10px', fontSize:'14px', fontWeight:700, cursor:'pointer', transition:'all 0.12s',
+                          border: selYear === y ? '2px solid #db2777' : '2px solid transparent',
+                          background: selYear === y ? '#fdf2f8' : '#f8fafc',
+                          color: selYear === y ? '#db2777' : '#334155' }}>
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {step === 'month' && selYear && (
+                <>
+                  <p style={{ fontSize:'11px', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'10px' }}>Select Month — {selYear}</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'6px' }}>
+                    {MONTHS.map((m, i) => (
+                      <button key={m} type="button" onClick={() => handleMonthSelect(i + 1)}
+                        style={{ padding:'14px 4px', borderRadius:'10px', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all 0.12s',
+                          border: selMonth === i+1 ? '2px solid #db2777' : '2px solid transparent',
+                          background: selMonth === i+1 ? '#fdf2f8' : '#f8fafc',
+                          color: selMonth === i+1 ? '#db2777' : '#334155' }}>
+                        {m.slice(0,3)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {step === 'day' && selYear && selMonth && (
+                <>
+                  <p style={{ fontSize:'11px', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'10px' }}>
+                    Select Day — {MONTHS[selMonth-1]} {selYear}
+                  </p>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'5px' }}>
+                    {dayNums.map(d => (
+                      <button key={d} type="button" onClick={() => handleDaySelect(d)}
+                        style={{ padding:'10px 2px', borderRadius:'8px', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all 0.12s',
+                          border: selDay === d ? '2px solid #db2777' : '2px solid transparent',
+                          background: selDay === d ? '#fdf2f8' : '#f8fafc',
+                          color: selDay === d ? '#db2777' : '#334155' }}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button type="button" onClick={() => setOpen(false)}
+              style={{ marginTop:'1rem', padding:'10px', borderRadius:'10px', width:'100%', background:'#f1f5f9', border:'none', fontWeight:700, color:'#64748b', fontSize:'13px', cursor:'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Components ---
 
 const InfoItem = ({ label, value }: { label: string, value: string }) => (
@@ -2993,7 +3145,7 @@ const ConsentFormContent = ({ type, onSubmit }: { type: FormType, onSubmit: (dat
             ) : (
               <FormField label="Full Name" name="name" value={formData.name} onChange={handleChange} icon={User} required />
             )}
-            <FormField label="Date of Birth (DOB)" name="dob" type="date" value={formData.dob} onChange={handleChange} icon={Calendar} required />
+            <DOBPicker value={formData.dob} onChange={handleChange} required />
             <FormField label="Phone Number" name="phone" type="tel" value={formData.phone} onChange={handleChange} icon={Phone} required />
             <FormField label="Address" name="address" value={formData.address} onChange={handleChange} icon={MapPin} required />
             <div className="grid grid-cols-3 gap-3">
