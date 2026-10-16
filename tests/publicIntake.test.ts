@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ageOnDate, validateDraft, validateImage } from '../server/intakeValidation.ts';
-import { createIntakeHandler } from '../api/intake.ts';
+import { createIntakeHandler } from '../server/intakeHandler.ts';
 
 const today = '2026-10-16';
 const adult = { type: 'tattoo', name: 'Test Person', dob: '2000-01-01', phone: '7135550123', address: 'Test address' };

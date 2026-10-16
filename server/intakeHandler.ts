@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { IntakeError, validateDraft, validateImage, validateReceipt } from '../server/intakeValidation.ts';
+import { IntakeError, validateDraft, validateImage, validateReceipt } from './intakeValidation.ts';
 import { buildSmsConsent } from '../src/smsConsent.ts';
 
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');

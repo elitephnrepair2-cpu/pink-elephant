@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
             // precedence, which can resurrect an old key after a config reload.
             const localFile = path.resolve(__dirname, '.env.local');
             const current = fs.existsSync(localFile) ? parseEnv(fs.readFileSync(localFile, 'utf8')) : {};
-            const { createIntakeHandler } = await import('./api/intake');
+            const { createIntakeHandler } = await import('./server/intakeHandler');
             const handler = createIntakeHandler({ env: { ...env, ...current } });
             await handler(req, res);
           });
