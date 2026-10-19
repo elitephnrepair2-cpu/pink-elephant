@@ -18,6 +18,8 @@ export interface BaseFormData {
   date: string;
   address: string;
   phone: string;
+  appointmentSmsOptIn?: boolean;
+  appointmentSmsConsent?: import('./smsConsent').AppointmentSmsConsent;
   city: string;
   state: string;
   zip: string;
@@ -52,3 +54,4 @@ export interface MinorPiercingFormData extends BaseFormData {
   procedureExplanation: string;
   healingTime: string;
 }
+
