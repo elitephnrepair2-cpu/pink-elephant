@@ -800,7 +800,7 @@ const App = () => {
     const ids = forms.filter(f => selectedFormIds.has(f.id) && f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory).map(f => f.db_id || f.id);
     if (!ids.length) return;
     const message = action === 'delete'
-      ? `Permanently delete ${ids.length} selected history record(s)? This cannot be undone. Records under retention or legal hold will be blocked. Stored attachments and backups are not erased by this action.`
+      ? `Permanently delete ${ids.length} selected history record(s)? This cannot be undone. You are responsible for keeping legally required records. Only delete a test entry or a record you are authorized to remove. Records on legal hold cannot be deleted. Stored attachments and backups are not erased by this action.`
       : `${action === 'archive' ? 'Archive' : 'Restore'} ${ids.length} selected history record(s)? Signed records will remain saved.`;
     if (!confirm(message)) return;
     if (action === 'delete' && prompt('Type DELETE to confirm permanent history deletion') !== 'DELETE') return;
@@ -812,8 +812,15 @@ const App = () => {
       setViewingForm(null);
       await fetchForms();
       alert(action === 'delete' ? 'Selected history records deleted. Stored attachments and backups remain retained.' : 'History updated. Signed records are still saved.');
-    } catch {
-      alert('History was not changed. A selected record may be under retention or legal hold, your access may have changed, or the database setup may be unavailable. Refresh or contact the administrator.');
+    } catch (error: any) {
+      const message = String(error?.message || '');
+      if (message.startsWith('Deletion blocked:')) {
+        alert('This record is on legal hold and cannot be deleted. Archive it to hide it while preserving the record.');
+      } else if (error?.code === '42501') {
+        alert('Your account does not currently have history-administrator access. Sign in again or contact the administrator.');
+      } else {
+        alert('History was not changed. Refresh and try again, or contact the administrator if the problem continues.');
+      }
     } finally { setHistoryBusy(false); }
   };
   const handleClearQueue = async (targets: any[]) => {
@@ -1364,7 +1371,7 @@ const App = () => {
                       <button className="btn-secondary text-red-700" disabled={historyBusy || !selectedFormIds.size} onClick={() => handleHistoryAction('delete')}>Delete selected history permanently</button>
                     </>}
                   </div>
-                  <p className="text-sm text-slate-600 mb-4">Archiving preserves signed records. Permanent history deletion requires administrator access and retention checks. It does not erase stored attachments or backups.</p>
+                  <p className="text-sm text-slate-600 mb-4">Archiving preserves signed records. Permanent history deletion requires administrator access and confirmation. You are responsible for required record retention. Legal holds block deletion. It does not erase stored attachments or backups.</p>
                   <div className="bg-white border border-black overflow-x-auto">
                     <table className="w-full text-left min-w-[600px] border-collapse">
                       <thead>
