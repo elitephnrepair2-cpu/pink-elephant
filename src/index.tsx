@@ -1,3 +1,4 @@
+import { completedQueueIds } from './queueSelection';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
@@ -698,7 +699,7 @@ const App = () => {
     if (data) {
       const seen = new Set();
       const mappedForms = (await Promise.all(data
-        .map(d => withPrivateDocuments({ ...d.form_data, id: d.id, db_id: d.id, timestamp: d.created_at }, supabase, CONFIG_URL))))
+        .map(d => withPrivateDocuments({ ...d.form_data, id: d.id, db_id: d.id, timestamp: d.created_at, historyHiddenAt: d.history_hidden_at, recordLastEntryAt: d.record_last_entry_at, legalHold: d.legal_hold }, supabase, CONFIG_URL))))
         .filter(f => {
           if (seen.has(f.id)) return false;
           seen.add(f.id);
@@ -754,7 +755,7 @@ const App = () => {
   const handleArchive = async (updatedForm: any, artistName: string = '') => {
     const finalForm = {
       ...updatedForm,
-      isArchived: true,
+      isArchived: updatedForm.isArchived || false,
       artistName: artistName || updatedForm.artistName || '',
       ...infoSheetData
     };
@@ -776,25 +777,64 @@ const App = () => {
     }
   };
 
-  const handleDelete = async (form: any) => {
-    if (!form) return;
-    const idToDelete = form.db_id || form.id;
-    if (!idToDelete) {
-      alert("Could not find form ID to delete.");
-      return;
-    }
-    if (!confirm("Are you sure you want to permanently delete this form?")) return;
-    const { error } = await supabase
-      .from('consent_forms')
-      .delete()
-      .eq('id', idToDelete);
+  const [historyAdmin, setHistoryAdmin] = useState(false);
+  const [showArchivedHistory, setShowArchivedHistory] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [clearingQueue, setClearingQueue] = useState(false);
+  const [completingVisit, setCompletingVisit] = useState(false);
 
-    if (error) {
-      console.error("Delete error:", error);
-      alert("Failed to delete form: " + error.message);
-    } else {
+  const handleCompleteVisit = async (form: any) => {
+    if (completingVisit || !confirm('Mark this customer’s procedure completed? This keeps them in the queue until you select and clear them.')) return;
+    setCompletingVisit(true);
+    try {
+      const { error } = await supabase.rpc('pe_complete_visit', { p_id: form.db_id || form.id });
+      if (error) throw error;
+      await fetchForms();
+    } catch {
+      alert('Could not mark the visit completed. Refresh and try again or ask the administrator to check the database setup.');
+    } finally { setCompletingVisit(false); }
+  };
+
+  const handleHistoryAction = async (action: 'archive' | 'restore' | 'delete') => {
+    if (!historyAdmin || historyBusy || !selectedFormIds.size) return;
+    const ids = forms.filter(f => selectedFormIds.has(f.id) && f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory).map(f => f.db_id || f.id);
+    if (!ids.length) return;
+    const message = action === 'delete'
+      ? `Permanently delete ${ids.length} selected history record(s)? This cannot be undone. Records under retention or legal hold will be blocked. Stored attachments and backups are not erased by this action.`
+      : `${action === 'archive' ? 'Archive' : 'Restore'} ${ids.length} selected history record(s)? Signed records will remain saved.`;
+    if (!confirm(message)) return;
+    if (action === 'delete' && prompt('Type DELETE to confirm permanent history deletion') !== 'DELETE') return;
+    setHistoryBusy(true);
+    try {
+      const { error } = await supabase.rpc('pe_manage_history', { p_ids: ids, p_action: action });
+      if (error) throw error;
+      setSelectedFormIds(new Set());
       setViewingForm(null);
-      fetchForms();
+      await fetchForms();
+      alert(action === 'delete' ? 'Selected history records deleted. Stored attachments and backups remain retained.' : 'History updated. Signed records are still saved.');
+    } catch {
+      alert('History was not changed. A selected record may be under retention or legal hold, your access may have changed, or the database setup may be unavailable. Refresh or contact the administrator.');
+    } finally { setHistoryBusy(false); }
+  };
+  const handleClearQueue = async (targets: any[]) => {
+    if (clearingQueue) return;
+    const ids = completedQueueIds(targets);
+    if (!ids.length) return;
+    if (!confirm(`Remove ${ids.length} customer(s) from the queue? Their signed waivers will stay in Form History. Only visits marked completed can be cleared.`)) return;
+    setClearingQueue(true);
+    try {
+      const { data, error } = await supabase.rpc('pe_clear_queue', { p_ids: ids });
+      if (error) throw error;
+      const removed = new Set((data || []).map((row: any) => row.id));
+      setForms(previous => previous.map(f => removed.has(f.db_id || f.id) ? { ...f, isArchived: true } : f));
+      setViewingForm(null);
+      setSelectedFormIds(new Set());
+      await fetchForms();
+      alert(`${removed.size} removed from the queue. Waivers are saved in Form History.`);
+    } catch {
+      alert('Could not clear the queue. Your waivers are unchanged. Please try again or ask the administrator to check the queue setup.');
+    } finally {
+      setClearingQueue(false);
     }
   };
 
@@ -814,61 +854,6 @@ const App = () => {
     setSelectedFormIds(newSelected);
   };
 
-  const handleDeleteSelected = async () => {
-    if (selectedFormIds.size === 0) return;
-    if (!confirm(`Are you sure you want to permanently delete ${selectedFormIds.size} form(s)?`)) return;
-
-    const idsToDelete = Array.from(selectedFormIds);
-    const { error } = await supabase
-      .from('consent_forms')
-      .delete()
-      .in('id', idsToDelete);
-
-    if (error) {
-      console.error("Delete error:", error);
-      alert("Failed to delete forms: " + error.message);
-    } else {
-      setSelectedFormIds(new Set());
-      setViewingForm(null);
-      fetchForms();
-    }
-  };
-
-  const handleDeleteAll = async () => {
-    const visibleForms = forms.filter(f => {
-      if (f.isArchived) return false;
-      const matchesSearch = (f.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false) || 
-                            (f.minorName?.toLowerCase().includes(searchQuery.toLowerCase()) || false);
-      if (searchQuery && !matchesSearch) return false;
-      
-      if (staffQueueFilter === 'all') return true;
-      if (staffQueueFilter === 'tattoo') return f.type === 'tattoo';
-      return f.type === 'piercing' || f.type === 'minor-piercing';
-    });
-    
-    if (visibleForms.length === 0) {
-      alert("There are no forms matching your filter to delete.");
-      return;
-    }
-    
-    if (!confirm(`Are you sure you want to permanently delete ALL ${visibleForms.length} visible form(s)? This action cannot be undone.`)) return;
-
-    const idsToDelete = visibleForms.map(f => f.id);
-    const { error } = await supabase
-      .from('consent_forms')
-      .delete()
-      .in('id', idsToDelete);
-
-    if (error) {
-      console.error("Delete error:", error);
-      alert("Failed to delete forms: " + error.message);
-    } else {
-      setSelectedFormIds(new Set());
-      setViewingForm(null);
-      fetchForms();
-    }
-  };
-
   useEffect(() => {
     localStorage.setItem('pe_app_view', view);
   }, [view]);
@@ -876,6 +861,7 @@ const App = () => {
   useEffect(() => {
     fetchForms();
     fetchArtists();
+    supabase.rpc('pe_is_history_admin').then(({ data, error }) => setHistoryAdmin(!error && data === true));
 
     const formsChannel = supabase
       .channel('forms-changes')
@@ -1174,7 +1160,7 @@ const App = () => {
                   <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-6">
                     <div>
                       <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Live Queue</h1>
-                      <p className="text-sm sm:text-base text-slate-500 font-medium">Manage incoming client consent forms</p>
+                      <p className="text-sm sm:text-base text-slate-500 font-medium">Clear finished entries from the queue. Signed waivers stay in Form History.</p>
                     </div>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
                       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -1201,20 +1187,14 @@ const App = () => {
                         })}
                       </div>
                       <div className="flex gap-2">
-                        <button
-                          onClick={handleDeleteAll}
-                          className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
-                        >
-                          <Trash2 size={16} className="mb-1" />
-                          Delete All
-                        </button>
                         {selectedFormIds.size > 0 && (
                           <button
-                            onClick={handleDeleteSelected}
+                            disabled={clearingQueue}
+                            onClick={() => handleClearQueue(forms.filter(f => selectedFormIds.has(f.id)))}
                             className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
                           >
                             <Trash2 size={16} className="mb-1" />
-                            Delete ({selectedFormIds.size})
+                            Clear selected completed ({selectedFormIds.size})
                           </button>
                         )}
                         <button
@@ -1270,6 +1250,8 @@ const App = () => {
                                 type="checkbox"
                                 className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
                                 checked={selectedFormIds.has(form.id)}
+                                disabled={form.procedureStatus !== 'completed' || clearingQueue}
+                                aria-label={`Select completed visit for ${form.name || form.minorName}`}
                                 onClick={(e) => toggleSelection(form.id, e)}
                                 onChange={() => { }}
                               />
@@ -1284,16 +1266,12 @@ const App = () => {
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-slate-400">{form.submissionTime}</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(form); }}
-                                className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+
                             </div>
                           </div>
                           <h3 className="text-xl font-black text-slate-900 mb-1">{form.name || form.minorName}</h3>
-                          <p className="text-sm text-slate-500 font-medium mb-6">{form.phone}</p>
+                          <p className="text-sm text-slate-500 font-medium mb-2">{form.phone}</p>
+                          <p className="text-xs font-bold mb-4">{form.procedureStatus === 'completed' ? 'Completed — ready to clear' : 'Waiting / procedure not marked completed'}</p>
 
                           <div className="flex gap-2">
                             <button
@@ -1303,22 +1281,24 @@ const App = () => {
                               VIEW FILE
                             </button>
                             <button
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 setFormToArchive(form);
-                                 setSelectedArchiveArtist(form.artistName || '');
-                                 const calcAge = form.dob ? calculateAge(form.dob) : null;
-                                 setInfoSheetData({
-                                   clientDOB: form.dob || form.scannedDOB || form.clientDOB || '',
-                                   clientAge: form.clientAge || (calcAge !== null ? String(calcAge) : ''),
-                                   idType: form.idType || (form.idVerified ? "State DL/ID (Barcode Scanned)" : "State Driver's License/ID")
-                                 });
-                               }}
-                               className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors"
-                             >
-                               DONE
-                             </button>
+                              disabled={completingVisit || form.procedureStatus === 'completed'}
+                              onClick={(e) => { e.stopPropagation(); handleCompleteVisit(form); }}
+                              className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors disabled:opacity-50"
+                            >
+                              Mark completed
+                            </button>
                           </div>
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            setFormToArchive(form);
+                            setSelectedArchiveArtist(form.artistName || '');
+                            const age = form.dob ? calculateAge(form.dob) : null;
+                            setInfoSheetData({
+                              clientDOB: form.dob || form.scannedDOB || form.clientDOB || '',
+                              clientAge: form.clientAge || (age !== null ? String(age) : ''),
+                              idType: form.idType || (form.idVerified ? "State DL/ID (Barcode Scanned)" : "State Driver's License/ID")
+                            });
+                          }} className="mt-3 text-xs underline text-slate-500">Add procedure details &amp; artist</button>
                         </motion.div>
                       ))}
                     {filteredForms.filter(f => !f.isArchived).length === 0 && (
@@ -1370,17 +1350,21 @@ const App = () => {
                         />
                       </div>
                     )}
-                    {selectedFormIds.size > 0 && (
-                      <button
-                        onClick={handleDeleteSelected}
-                        className="flex items-center gap-2 px-6 py-2 bg-red-50 text-red-600 border border-red-500 font-bold hover:bg-red-100 transition-all text-xs uppercase tracking-widest ml-auto"
-                      >
-                        <Trash2 size={16} />
-                        Delete Selected ({selectedFormIds.size})
-                      </button>
-                    )}
+
                   </div>
 
+                  <div className="flex flex-wrap gap-3 mb-4">
+                    <button className="btn-secondary" onClick={() => { setShowArchivedHistory(!showArchivedHistory); setSelectedFormIds(new Set()); }}>
+                      {showArchivedHistory ? 'Show regular history' : 'Show archived history'}
+                    </button>
+                    {historyAdmin && <>
+                      <button className="btn-secondary" disabled={historyBusy || !selectedFormIds.size} onClick={() => handleHistoryAction(showArchivedHistory ? 'restore' : 'archive')}>
+                        {showArchivedHistory ? 'Restore selected' : 'Archive selected'}
+                      </button>
+                      <button className="btn-secondary text-red-700" disabled={historyBusy || !selectedFormIds.size} onClick={() => handleHistoryAction('delete')}>Delete selected history permanently</button>
+                    </>}
+                  </div>
+                  <p className="text-sm text-slate-600 mb-4">Archiving preserves signed records. Permanent history deletion requires administrator access and retention checks. It does not erase stored attachments or backups.</p>
                   <div className="bg-white border border-black overflow-x-auto">
                     <table className="w-full text-left min-w-[600px] border-collapse">
                       <thead>
@@ -1395,8 +1379,8 @@ const App = () => {
                       </thead>
                       <tbody className="divide-y divide-black">
                         {(selectedClient
-                          ? getClientHistory(selectedClient.name, selectedClient.phone)
-                          : filteredForms.filter(f => f.isArchived)
+                          ? getClientHistory(selectedClient.name, selectedClient.phone).filter(f => f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory)
+                          : filteredForms.filter(f => f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory)
                         ).map((form) => (
                           <tr
                             key={form.id}
@@ -1451,7 +1435,7 @@ const App = () => {
                         ))}
                       </tbody>
                     </table>
-                    {(selectedClient ? getClientHistory(selectedClient.name, selectedClient.phone) : filteredForms.filter(f => f.isArchived)).length === 0 && (
+                    {(selectedClient ? getClientHistory(selectedClient.name, selectedClient.phone).filter(f => f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory) : filteredForms.filter(f => f.isArchived && Boolean(f.historyHiddenAt) === showArchivedHistory)).length === 0 && (
                       <div className="text-center py-20">
                         <p className="text-slate-400 font-bold uppercase tracking-widest">No forms found</p>
                       </div>
@@ -1817,10 +1801,10 @@ const App = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-                    <button onClick={() => handleDelete(viewingForm)} className="btn-secondary px-3 sm:px-4 py-2 sm:py-3 text-red-500 hover:bg-red-50 hover:border-red-200 flex-1 sm:flex-none">
-                      <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]" />
-                      <span className="text-xs sm:text-sm">Delete</span>
-                    </button>
+                    {!viewingForm.isArchived && viewingForm.procedureStatus !== 'completed' && <button disabled={completingVisit} onClick={() => handleCompleteVisit(viewingForm)} className="btn-secondary px-3 py-2 flex-1 sm:flex-none disabled:opacity-50">
+                      <CheckCircle size={16} />
+                      <span className="text-xs sm:text-sm">Mark completed</span>
+                    </button>}
                     <button onClick={() => window.print()} className="btn-primary px-4 sm:px-6 py-2 sm:py-3 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
                       <Printer size={16} className="sm:w-[18px] sm:h-[18px]" />
                       <span className="text-xs sm:text-sm">PRINT</span>
