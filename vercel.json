@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/intake", "destination": "/index.html" },
+    { "source": "/welcome", "destination": "/index.html" },
+    { "source": "/waitlist", "destination": "/index.html" },
+    { "source": "/public-queue", "destination": "/index.html" },
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/sms-terms", "destination": "/index.html" }
+  ]
+}
