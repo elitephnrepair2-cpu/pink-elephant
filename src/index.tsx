@@ -994,6 +994,8 @@ const App = () => {
     f.minorName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const selectedCompletedCount = completedQueueIds(forms.filter(f => selectedFormIds.has(f.id))).length;
+
   const getClientHistory = (name: string, phone: string) => {
     return forms.filter(f => (f.name === name || f.minorName === name) && f.phone === phone);
   };
@@ -1283,12 +1285,12 @@ const App = () => {
                       <div className="flex gap-2">
                         {selectedFormIds.size > 0 && (
                           <button
-                            disabled={clearingQueue}
+                            disabled={clearingQueue || selectedCompletedCount === 0}
                             onClick={offerQueueClear}
                             className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
                           >
                             <Trash2 size={16} className="mb-1" />
-                            Clear selected completed ({selectedFormIds.size})
+                            Clear selected completed ({selectedCompletedCount})
                           </button>
                         )}
                         <button
@@ -1312,6 +1314,11 @@ const App = () => {
                       </div>
                     </div>
                   </header>
+
+                  {selectedFormIds.size > 0 && <p className="text-sm text-slate-600 mb-4" role="status">
+                    {selectedFormIds.size} selected · {selectedCompletedCount} completed and ready to clear.
+                    {selectedFormIds.size > selectedCompletedCount && ' Waiting visits can be selected; mark them completed before clearing.'}
+                  </p>}
 
                   <div className="mb-8 relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -1344,8 +1351,8 @@ const App = () => {
                                 type="checkbox"
                                 className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
                                 checked={selectedFormIds.has(form.id)}
-                                disabled={form.procedureStatus !== 'completed' || clearingQueue}
-                                aria-label={`Select completed visit for ${form.name || form.minorName}`}
+                                disabled={clearingQueue}
+                                aria-label={`Select visit for ${form.name || form.minorName}`}
                                 onClick={(e) => toggleSelection(form.id, e)}
                                 onChange={() => { }}
                               />

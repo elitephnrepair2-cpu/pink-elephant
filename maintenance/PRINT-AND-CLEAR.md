@@ -14,7 +14,7 @@ The original consent print layout was restored at the user's request on October 
 - Opens an isolated printing window, reads current saved records and renews private document links before printing.
 - Waits for stylesheet and image loading; missing signatures or failed attachment loading block printing/clearing.
 - Does not interpret `afterprint`, window focus, or closing a print dialog as proof of success. A browser cannot observe the physical printer.
-- Ignores uncompleted/archived visits in queue selection; limits a batch to 200 completed visits.
+- Staff can select waiting or completed visits using queue checkboxes. Clearing remains limited to completed visits, and the selection summary shows how many are ready. A waiting-only selection cannot be cleared. Limits a batch to 200 completed visits.
 - Checks the saved record again before clearing. Changes during staff review require a fresh print. Existing RPC row-lock/status checks still apply; the frontend freshness check is not an atomic database compare-and-swap.
 - Calls only the existing `pe_clear_queue` RPC, which sets `form_data.isArchived=true`. Does not delete database rows, consent, attachments, or history. Existing separate administrator history actions are unchanged.
 - Refreshes after clearing attempts, checks returned IDs and checks that successfully cleared visits no longer appear active. A failed refresh is reported as unverified; no false success message.
