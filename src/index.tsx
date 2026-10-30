@@ -1,6 +1,7 @@
 import { completedQueueIds } from './queueSelection';
 import { PrintablePacket } from './PrintablePacket';
-import { PrintConfirmation } from './PrintConfirmation';
+import { PrintConfirmation, CompletionPrintPrompt } from './PrintConfirmation';
+import { completeVisitForPrinting } from './completeVisitForPrinting';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { preparePrintWindow, runPrintAndClear, packetFingerprint, assertSignedPacket, clearPrintedQueue } from './printAndClear';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -789,16 +790,22 @@ const App = () => {
   const [clearingQueue, setClearingQueue] = useState(false);
   const [completingVisit, setCompletingVisit] = useState(false);
 
+  const [completedPrintForm, setCompletedPrintForm] = useState<any>(null);
+  const completionBusy = useRef(false);
+
   const handleCompleteVisit = async (form: any) => {
-    if (completingVisit || !confirm('Mark this customer’s procedure completed? This keeps them in the queue until you select and clear them.')) return;
+    if (completionBusy.current || printBusy.current) return;
+    completionBusy.current = true;
     setCompletingVisit(true);
     try {
-      const { error } = await supabase.rpc('pe_complete_visit', { p_id: form.db_id || form.id });
-      if (error) throw error;
-      await fetchForms();
-    } catch {
-      alert('Could not mark the visit completed. Refresh and try again or ask the administrator to check the database setup.');
-    } finally { setCompletingVisit(false); }
+      const saved = await completeVisitForPrinting(supabase, form.db_id || form.id, fetchForms);
+      setCompletedPrintForm(saved);
+    } catch (error: any) {
+      alert(error?.message || 'Could not mark the visit completed. Refresh and try again.');
+    } finally {
+      completionBusy.current = false;
+      setCompletingVisit(false);
+    }
   };
 
   const handleHistoryAction = async (action: 'archive' | 'restore' | 'delete') => {
@@ -1827,6 +1834,15 @@ const App = () => {
           )}
         </AnimatePresence>
 
+        {completedPrintForm && <CompletionPrintPrompt
+          name={completedPrintForm.name || completedPrintForm.minorName || 'this customer'}
+          onLater={() => setCompletedPrintForm(null)}
+          onPrint={() => {
+            const target = completedPrintForm;
+            setCompletedPrintForm(null);
+            void handlePrintPacket([target], true);
+          }}
+        />}
         {printPrompt.length > 0 && <PrintConfirmation names={printPrompt} onResolve={resolvePrint} />}
 
         {/* Form Viewer Modal */}
