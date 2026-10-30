@@ -1,7 +1,8 @@
 import { completedQueueIds } from './queueSelection';
 import { PrintablePacket } from './PrintablePacket';
-import { PrintConfirmation, CompletionPrintPrompt } from './PrintConfirmation';
+import { PrintConfirmation, CompletionPrintPrompt, QueueClearChoice } from './PrintConfirmation';
 import { completeVisitForPrinting } from './completeVisitForPrinting';
+import { clearWithoutPrinting } from './clearWithoutPrinting';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { preparePrintWindow, runPrintAndClear, packetFingerprint, assertSignedPacket, clearPrintedQueue } from './printAndClear';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -903,6 +904,34 @@ const App = () => {
     }
   };
 
+  const [queueClearTargets, setQueueClearTargets] = useState<any[]>([]);
+  const offerQueueClear = () => {
+    const selected = forms.filter(f => selectedFormIds.has(f.id));
+    const eligible = new Set(completedQueueIds(selected));
+    if (!eligible.size || eligible.size > 200) {
+      alert('Select between 1 and 200 completed visits. Waiting customers cannot be cleared.');
+      return;
+    }
+    setQueueClearTargets(selected.filter(f => eligible.has(f.db_id || f.id)));
+  };
+  const confirmClearWithoutPrinting = async () => {
+    if (printBusy.current || !queueClearTargets.length) return;
+    printBusy.current = true;
+    setClearingQueue(true);
+    try {
+      await clearWithoutPrinting(supabase, queueClearTargets, true, fetchForms);
+      setQueueClearTargets([]);
+      setSelectedFormIds(new Set());
+      setViewingForm(null);
+      alert('Completed customers cleared without printing. Their forms, consent and attachments remain saved in Form History.');
+    } catch (error: any) {
+      alert(error?.message || 'The queue update could not be confirmed. Refresh before trying again.');
+    } finally {
+      printBusy.current = false;
+      setClearingQueue(false);
+    }
+  };
+
   // Clear selections when view changes
   useEffect(() => {
     setSelectedFormIds(new Set());
@@ -1225,7 +1254,7 @@ const App = () => {
                   <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-6">
                     <div>
                       <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Live Queue</h1>
-                      <p className="text-sm sm:text-base text-slate-500 font-medium">Print finished entries, confirm the paper packet, then clear the queue. Signed waivers stay in Form History.</p>
+                      <p className="text-sm sm:text-base text-slate-500 font-medium">Clear completed entries with or without printing. Signed waivers stay in Form History.</p>
                     </div>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
                       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -1255,11 +1284,11 @@ const App = () => {
                         {selectedFormIds.size > 0 && (
                           <button
                             disabled={clearingQueue}
-                            onClick={() => handlePrintPacket(forms.filter(f => selectedFormIds.has(f.id)), true)}
+                            onClick={offerQueueClear}
                             className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
                           >
                             <Trash2 size={16} className="mb-1" />
-                            Print & Clear completed ({selectedFormIds.size})
+                            Clear selected completed ({selectedFormIds.size})
                           </button>
                         )}
                         <button
@@ -1834,6 +1863,17 @@ const App = () => {
           )}
         </AnimatePresence>
 
+        {queueClearTargets.length > 0 && <QueueClearChoice
+          names={queueClearTargets.map(f => f.name || f.minorName || 'Customer')}
+          busy={clearingQueue}
+          onCancel={() => setQueueClearTargets([])}
+          onWithoutPrinting={() => { void confirmClearWithoutPrinting(); }}
+          onPrint={() => {
+            const targets = queueClearTargets;
+            setQueueClearTargets([]);
+            void handlePrintPacket(targets, true);
+          }}
+        />}
         {completedPrintForm && <CompletionPrintPrompt
           name={completedPrintForm.name || completedPrintForm.minorName || 'this customer'}
           onLater={() => setCompletedPrintForm(null)}

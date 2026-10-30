@@ -33,3 +33,21 @@ export function CompletionPrintPrompt({ name, onPrint, onLater }: {
     <p className="text-sm">Saved records, consent and attachments stay saved.</p>
   </dialog>;
 }
+
+export function QueueClearChoice({ names, busy, onCancel, onPrint, onWithoutPrinting }: {
+  names: string[]; busy: boolean; onCancel: () => void; onPrint: () => void; onWithoutPrinting: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+    return () => { dialog.current?.close(); };
+  }, []);
+  return <dialog ref={dialog} className="fixed inset-0 z-[400] m-auto bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 backdrop:bg-slate-950/90" aria-labelledby="queue-clear-title" onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
+    <h2 id="queue-clear-title" className="text-xl font-bold">Clear without printing?</h2>
+    <p>Are you choosing to remove {names.join(', ')} from the active queue without printing?</p>
+    <p>This clears completed visits from the queue. Saved forms, consent, signatures and attachments remain in Form History.</p>
+    <button autoFocus disabled={busy} className="btn-secondary w-full" onClick={onCancel}>Cancel — keep in queue</button>
+    <button disabled={busy} className="btn-primary w-full" onClick={onPrint}>Print & Clear instead</button>
+    <button disabled={busy} className="btn-secondary w-full" onClick={onWithoutPrinting}>{busy ? 'Updating queue…' : 'Yes, clear without printing'}</button>
+  </dialog>;
+}

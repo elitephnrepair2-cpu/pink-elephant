@@ -4,7 +4,7 @@ Status: implemented and tested locally; submitted for GitHub review. Not deploye
 
 ## Staff use
 
-1. Choose **Mark completed**. Once the saved completed status is verified, the app asks **Visit completed. Print now?** Choose **Print & Clear** to continue or **Not now — keep in queue** to leave it completed and active. You can also open its saved form and choose **Print & Clear**, or select completed queue entries and choose **Print & Clear completed**. History's **Print** creates the same packet without clearing anything.
+1. Choose **Mark completed**. Once the saved completed status is verified, the app asks **Visit completed. Print now?** Choose **Print & Clear** to continue or **Not now — keep in queue** to leave it completed and active. You can also open its saved form and choose **Print & Clear**, or select completed queue entries and choose **Clear selected completed**. This opens a choice: **Print & Clear instead**, **Yes, clear without printing**, or **Cancel — keep in queue**. Clearing without printing requires the explicit Yes choice and still preserves all saved records. History's **Print** creates the same packet without clearing anything.
 2. Inspect the actual printed pages. Choose **Cancelled / failed — keep in queue** if anything is missing, cancelled, unreadable, or the printer fails. Escape also keeps the visit queued. Only choose **I checked every printed page — clear queue** after every selected customer's packet has printed.
 
 The original consent print layout was restored at the user's request on October 28, 2026. It prints the waiver, inline signatures, client/artist sections and original identification grid. The added intake-evidence appendix and separate signature/attachment pages have been removed. The original layout does not print every saved intake field; database records and attachments remain retained unchanged. Pagination still depends on paper size, print scale and the saved ID images.
@@ -23,7 +23,7 @@ The original consent print layout was restored at the user's request on October 
 ## Verification
 
 - `npm run lint`: passed.
-- `node --test tests/*.test.ts`: 36 passed, including completion save/readback and Print & Clear checks.
+- `node --test tests/*.test.ts`: 41 passed, including explicit no-print confirmation, queue readback, completion save/readback and Print & Clear checks.
 - `npm run build`: passed; existing large frontend bundle warning remains.
 - Chrome sample-data browser checks: passed for staff cancellation, Escape, missing image, print exception, explicit confirmation, refreshed queue and retained signatures/record. The print function and database effects are simulated; no live records are mutated.
 - Restored-layout sample regenerated and browser-checked on October 28, 2026: `print-clear-qa/sample-packet.png`. Printable sample: `print-clear-qa/sample-signed-packet.pdf`. All sample names/signatures are artificial. Generated QA files remain local and are not included in the GitHub update.
