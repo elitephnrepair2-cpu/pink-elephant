@@ -1,4 +1,4 @@
-import { completedQueueIds } from './queueSelection';
+import { activeQueueIds } from './queueSelection';
 import { PrintablePacket } from './PrintablePacket';
 import { PrintConfirmation, CompletionPrintPrompt, QueueClearChoice } from './PrintConfirmation';
 import { completeVisitForPrinting } from './completeVisitForPrinting';
@@ -849,8 +849,8 @@ const App = () => {
 
   const handlePrintPacket = async (targets: any[], clearAfterPrint = false) => {
     if (printBusy.current) return;
-    const ids = clearAfterPrint ? completedQueueIds(targets) : targets.map(f => f.db_id || f.id);
-    if (!ids.length || ids.length > 200) { alert('Select between 1 and 200 completed visits.'); return; }
+    const ids = clearAfterPrint ? activeQueueIds(targets) : targets.map(f => f.db_id || f.id);
+    if (!ids.length || ids.length > 200) { alert('Select between 1 and 200 active visits.'); return; }
     // Open during the click, before awaits, so normal popup protection permits it.
     const popup = window.open('', '_blank');
     if (!popup) { alert('Allow the packet popup and try again. Nothing was cleared.'); return; }
@@ -861,8 +861,8 @@ const App = () => {
     try {
       const { data: rows, error } = await supabase.from('consent_forms').select('*').in('id', ids);
       if (error || rows?.length !== ids.length) throw new Error('Could not load every saved record. Nothing was cleared.');
-      if (clearAfterPrint && rows.some(row => row.form_data.isArchived || row.form_data.procedureStatus !== 'completed'))
-        throw new Error('A visit is no longer completed and active. Refresh the queue before trying again.');
+      if (clearAfterPrint && rows.some(row => row.form_data.isArchived))
+        throw new Error('A visit is no longer active. Refresh the queue before trying again.');
       const snapshots = new Map<string, string>(rows.map(row => [row.id, packetFingerprint(row)]));
       const packets = await Promise.all(rows.map(async row => {
         const raw = { ...row.form_data, id: row.id, timestamp: row.created_at,
@@ -907,9 +907,9 @@ const App = () => {
   const [queueClearTargets, setQueueClearTargets] = useState<any[]>([]);
   const offerQueueClear = () => {
     const selected = forms.filter(f => selectedFormIds.has(f.id));
-    const eligible = new Set(completedQueueIds(selected));
+    const eligible = new Set(activeQueueIds(selected));
     if (!eligible.size || eligible.size > 200) {
-      alert('Select between 1 and 200 completed visits. Waiting customers cannot be cleared.');
+      alert('Select between 1 and 200 active visits.');
       return;
     }
     setQueueClearTargets(selected.filter(f => eligible.has(f.db_id || f.id)));
@@ -923,7 +923,7 @@ const App = () => {
       setQueueClearTargets([]);
       setSelectedFormIds(new Set());
       setViewingForm(null);
-      alert('Completed customers cleared without printing. Their forms, consent and attachments remain saved in Form History.');
+      alert('Selected customers cleared without printing. Their forms, consent and attachments remain saved in Form History.');
     } catch (error: any) {
       alert(error?.message || 'The queue update could not be confirmed. Refresh before trying again.');
     } finally {
@@ -994,7 +994,7 @@ const App = () => {
     f.minorName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const selectedCompletedCount = completedQueueIds(forms.filter(f => selectedFormIds.has(f.id))).length;
+  const selectedActiveCount = activeQueueIds(forms.filter(f => selectedFormIds.has(f.id))).length;
 
   const getClientHistory = (name: string, phone: string) => {
     return forms.filter(f => (f.name === name || f.minorName === name) && f.phone === phone);
@@ -1256,7 +1256,7 @@ const App = () => {
                   <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-6">
                     <div>
                       <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Live Queue</h1>
-                      <p className="text-sm sm:text-base text-slate-500 font-medium">Clear completed entries with or without printing. Signed waivers stay in Form History.</p>
+                      <p className="text-sm sm:text-base text-slate-500 font-medium">Clear selected entries with or without printing. Signed waivers stay in Form History.</p>
                     </div>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
                       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -1285,12 +1285,12 @@ const App = () => {
                       <div className="flex gap-2">
                         {selectedFormIds.size > 0 && (
                           <button
-                            disabled={clearingQueue || selectedCompletedCount === 0}
+                            disabled={clearingQueue || selectedActiveCount === 0}
                             onClick={offerQueueClear}
                             className="flex flex-col items-center justify-center h-12 px-4 border border-red-500 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest"
                           >
                             <Trash2 size={16} className="mb-1" />
-                            Clear selected completed ({selectedCompletedCount})
+                            Clear selected ({selectedActiveCount})
                           </button>
                         )}
                         <button
@@ -1316,8 +1316,7 @@ const App = () => {
                   </header>
 
                   {selectedFormIds.size > 0 && <p className="text-sm text-slate-600 mb-4" role="status">
-                    {selectedFormIds.size} selected · {selectedCompletedCount} completed and ready to clear.
-                    {selectedFormIds.size > selectedCompletedCount && ' Waiting visits can be selected; mark them completed before clearing.'}
+                    {selectedActiveCount} selected and ready to clear.
                   </p>}
 
                   <div className="mb-8 relative">

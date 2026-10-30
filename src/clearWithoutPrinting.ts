@@ -1,12 +1,12 @@
-import { completedQueueIds } from './queueSelection.ts';
+import { activeQueueIds } from './queueSelection.ts';
 
 // Explicit opt-out of printing; still archive only through the existing queue RPC.
 export async function clearWithoutPrinting(
   client: any, visits: any[], confirmed: boolean, refresh: () => Promise<any[] | null>,
 ) {
   if (!confirmed) return false;
-  const ids = completedQueueIds(visits);
-  if (!ids.length || ids.length > 200) throw new Error('Select between 1 and 200 completed visits.');
+  const ids = activeQueueIds(visits);
+  if (!ids.length || ids.length > 200) throw new Error('Select between 1 and 200 active visits.');
   let saved = false;
   try {
     const { data, error } = await client.rpc('pe_clear_queue', { p_ids: ids });

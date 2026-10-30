@@ -39,14 +39,13 @@ BEGIN
     RAISE EXCEPTION 'Approved staff required' USING ERRCODE = '42501';
   END IF;
   IF coalesce(cardinality(p_ids), 0) = 0 OR cardinality(p_ids) > 200 THEN
-    RAISE EXCEPTION 'Select between 1 and 200 completed visits';
+    RAISE EXCEPTION 'Select between 1 and 200 active visits';
   END IF;
   PERFORM 1 FROM public.consent_forms f WHERE f.id = ANY(p_ids) FOR UPDATE;
   SELECT count(*) INTO target_count FROM public.consent_forms f
-  WHERE f.id = ANY(p_ids) AND f.form_data->>'procedureStatus' = 'completed'
-    AND coalesce(f.form_data->>'isArchived', 'false') <> 'true';
+  WHERE f.id = ANY(p_ids) AND coalesce(f.form_data->>'isArchived', 'false') <> 'true';
   IF target_count <> (SELECT count(DISTINCT x) FROM unnest(p_ids) x) THEN
-    RAISE EXCEPTION 'Only selected completed live visits can be cleared. Refresh and try again.';
+    RAISE EXCEPTION 'Only selected live visits can be cleared. Refresh and try again.';
   END IF;
   RETURN QUERY UPDATE public.consent_forms f
     SET form_data = jsonb_set(f.form_data, '{isArchived}', 'true'::jsonb)
