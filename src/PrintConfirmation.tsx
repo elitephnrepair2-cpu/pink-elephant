@@ -16,20 +16,20 @@ export function PrintConfirmation({ names, onResolve }: { names: string[]; onRes
   </dialog>;
 }
 
-export function CompletionPrintPrompt({ name, onPrint, onLater }: {
-  name: string; onPrint: () => void; onLater: () => void;
+export function CompletionPrintPrompt({ name, onPrint, onLater, saving = false }: {
+  name: string; onPrint: () => void; onLater: () => void; saving?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
     return () => { dialog.current?.close(); };
   }, []);
-  return <dialog ref={dialog} className="fixed inset-0 z-[400] m-auto bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 backdrop:bg-slate-950/90" aria-labelledby="completion-print-title" onCancel={event => { event.preventDefault(); onLater(); }}>
-    <h2 id="completion-print-title" className="text-xl font-bold">Visit completed. Print now?</h2>
-    <p>{name} is marked completed. Would you like to print the signed form now?</p>
+  return <dialog ref={dialog} className="fixed inset-0 z-[400] m-auto bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 backdrop:bg-slate-950/90" aria-labelledby="completion-print-title" onCancel={event => { event.preventDefault(); if (!saving) onLater(); }}>
+    <h2 id="completion-print-title" className="text-xl font-bold">{saving ? 'Saving completion…' : 'Visit completed. Print now?'}</h2>
+    <p role="status">{saving ? `Saving ${name}’s completed status. Printing will be available once it is confirmed.` : `${name} is marked completed. Would you like to print the signed form now?`}</p>
     <p>After printing, you’ll confirm that every page printed successfully before clearing this customer from the queue.</p>
-    <button autoFocus className="btn-secondary w-full" onClick={onLater}>Not now — keep in queue</button>
-    <button className="btn-primary w-full" onClick={onPrint}>Print & Clear</button>
+    <button autoFocus disabled={saving} className="btn-secondary w-full" onClick={onLater}>Not now — keep in queue</button>
+    <button disabled={saving} className="btn-primary w-full" onClick={onPrint}>Print & Clear</button>
     <p className="text-sm">Saved records, consent and attachments stay saved.</p>
   </dialog>;
 }

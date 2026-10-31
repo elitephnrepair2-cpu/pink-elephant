@@ -798,10 +798,17 @@ const App = () => {
     if (completionBusy.current || printBusy.current) return;
     completionBusy.current = true;
     setCompletingVisit(true);
+    setCompletedPrintForm(form);
     try {
-      const saved = await completeVisitForPrinting(supabase, form.db_id || form.id, fetchForms);
-      setCompletedPrintForm(saved);
+      const id = form.db_id || form.id;
+      const saved = await completeVisitForPrinting(supabase, id);
+      // Keep existing signed display links; only patch verified status fields.
+      const patch = { procedureStatus: saved.procedureStatus, completedAt: saved.completedAt };
+      setForms(previous => previous.map(item => (item.db_id || item.id) === id ? { ...item, ...patch } : item));
+      setViewingForm(current => current && (current.db_id || current.id) === id ? { ...current, ...patch } : current);
+      setCompletedPrintForm({ ...form, ...patch });
     } catch (error: any) {
+      setCompletedPrintForm(null);
       alert(error?.message || 'Could not mark the visit completed. Refresh and try again.');
     } finally {
       completionBusy.current = false;
@@ -1385,7 +1392,7 @@ const App = () => {
                               onClick={(e) => { e.stopPropagation(); handleCompleteVisit(form); }}
                               className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors disabled:opacity-50"
                             >
-                              Mark completed
+                              {completingVisit ? 'Saving…' : 'Mark completed'}
                             </button>
                           </div>
                           <button onClick={(e) => {
@@ -1881,6 +1888,7 @@ const App = () => {
           }}
         />}
         {completedPrintForm && <CompletionPrintPrompt
+          saving={completingVisit}
           name={completedPrintForm.name || completedPrintForm.minorName || 'this customer'}
           onLater={() => setCompletedPrintForm(null)}
           onPrint={() => {
@@ -1925,7 +1933,7 @@ const App = () => {
                   <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
                     {!viewingForm.isArchived && viewingForm.procedureStatus !== 'completed' && <button disabled={completingVisit} onClick={() => handleCompleteVisit(viewingForm)} className="btn-secondary px-3 py-2 flex-1 sm:flex-none disabled:opacity-50">
                       <CheckCircle size={16} />
-                      <span className="text-xs sm:text-sm">Mark completed</span>
+                      <span className="text-xs sm:text-sm">{completingVisit ? 'Saving…' : 'Mark completed'}</span>
                     </button>}
                     {!viewingForm.isArchived && viewingForm.procedureStatus === 'completed' && <button disabled={clearingQueue} onClick={() => handlePrintPacket([viewingForm], true)} className="btn-secondary px-3 py-2">Print & Clear</button>}
                     <button disabled={clearingQueue} onClick={() => handlePrintPacket([viewingForm])} className="btn-primary px-4 sm:px-6 py-2 sm:py-3 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
