@@ -795,7 +795,11 @@ const App = () => {
   const completionBusy = useRef(false);
 
   const handleCompleteVisit = async (form: any) => {
-    if (completionBusy.current || printBusy.current) return;
+    if (completionBusy.current || printBusy.current || form.isArchived) return;
+    if (form.procedureStatus === 'completed') {
+      setCompletedPrintForm(form);
+      return;
+    }
     completionBusy.current = true;
     setCompletingVisit(true);
     setCompletedPrintForm(form);
@@ -1388,11 +1392,11 @@ const App = () => {
                               VIEW FILE
                             </button>
                             <button
-                              disabled={completingVisit || form.procedureStatus === 'completed'}
+                              disabled={completingVisit || clearingQueue}
                               onClick={(e) => { e.stopPropagation(); handleCompleteVisit(form); }}
                               className="flex-1 py-2 bg-primary text-white font-bold rounded-xl text-xs hover:bg-primary-dark transition-colors disabled:opacity-50"
                             >
-                              {completingVisit ? 'Saving…' : 'Mark completed'}
+                              {completingVisit ? 'Saving…' : form.procedureStatus === 'completed' ? 'Print / Clear' : 'Mark completed'}
                             </button>
                           </div>
                           <button onClick={(e) => {
@@ -1935,7 +1939,7 @@ const App = () => {
                       <CheckCircle size={16} />
                       <span className="text-xs sm:text-sm">{completingVisit ? 'Saving…' : 'Mark completed'}</span>
                     </button>}
-                    {!viewingForm.isArchived && viewingForm.procedureStatus === 'completed' && <button disabled={clearingQueue} onClick={() => handlePrintPacket([viewingForm], true)} className="btn-secondary px-3 py-2">Print & Clear</button>}
+                    {!viewingForm.isArchived && viewingForm.procedureStatus === 'completed' && <button disabled={clearingQueue || completingVisit} onClick={() => handleCompleteVisit(viewingForm)} className="btn-secondary px-3 py-2">Print / Clear</button>}
                     <button disabled={clearingQueue} onClick={() => handlePrintPacket([viewingForm])} className="btn-primary px-4 sm:px-6 py-2 sm:py-3 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
                       <Printer size={16} className="sm:w-[18px] sm:h-[18px]" />
                       <span className="text-xs sm:text-sm">PRINT</span>
